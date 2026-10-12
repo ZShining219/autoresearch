@@ -1,0 +1,5 @@
+includes:
+  - configs/tsc/presslight.yml
+
+world:
+  hetero: true

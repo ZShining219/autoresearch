@@ -1,0 +1,8 @@
+includes:
+  - configs/tsc/maxpressure.yml
+
+# Partial-observability example: only 10% of vehicles are visible to the controller
+# (connected-vehicle penetration rate). Physics unchanged; same seeded mask for every
+# agent. Set world.obs_penetration to sweep the axis (1.0 = full observability baseline).
+world:
+  obs_penetration: 0.1

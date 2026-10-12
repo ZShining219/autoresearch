@@ -1,0 +1,5 @@
+includes:
+  - configs/tsc/colight_odh_l1_1x21.yml
+
+model:
+  name: colight_rich

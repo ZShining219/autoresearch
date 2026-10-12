@@ -1,0 +1,8 @@
+includes:
+  - configs/tsc/dqn.yml
+
+# Partial-observability example (see configs/tsc/base.yml -> world.obs_penetration).
+# RL agents are trained on the observed (partial) counts. Train under a given penetration
+# rate, or train at p=1.0 and evaluate at a lower p to measure the sim-to-real gap.
+world:
+  obs_penetration: 0.1

@@ -1,0 +1,5 @@
+includes:
+  - configs/tsc/colight.yml
+
+world:
+  hetero: true

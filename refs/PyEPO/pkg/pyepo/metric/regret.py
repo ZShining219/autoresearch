@@ -1,0 +1,162 @@
+#!/usr/bin/env python
+"""
+True regret loss
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import TYPE_CHECKING, cast
+
+import numpy as np
+import torch
+
+from pyepo.func.runtime import create_solver_pool, normalize_processes
+from pyepo.func.utils import _close_pool, _solve_batch
+from pyepo.metric._common import (
+    normalize_regret,
+    regret_from_objective,
+    torch_evaluation,
+    validate_cost_vectors,
+    validate_prediction_batch,
+)
+from pyepo.utils import costToNumpy, objective_offset, require_linear_objective
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from torch import nn
+    from torch.utils.data import DataLoader
+
+    from pyepo.model.opt import optModel
+
+logger = logging.getLogger(__name__)
+
+
+def regret(
+    predmodel: nn.Module | Callable,
+    optmodel: optModel,
+    dataloader: DataLoader,
+    processes: int = 1,
+    reduction: str = "normalized",
+) -> float | np.ndarray:
+    """
+    True regret (SPO loss) of a trained predictor.
+
+    Solves the optimization problem on the predicted cost vector
+    :math:`\\hat{\\mathbf{c}}`, then measures the excess true objective
+    incurred by that decision:
+    :math:`l_i = \\mathbf{c}_i^\\top \\mathbf{w}^*(\\hat{\\mathbf{c}}_i) -
+    z^*(\\mathbf{c}_i)`. With the default ``reduction="normalized"`` the
+    result is :math:`\\sum_i l_i / \\sum_i |z^*(\\mathbf{c}_i)|`,
+    dimensionless and comparable across problem scales; instances with
+    near-zero true optima inflate the ratio. PyTorch predictors are
+    evaluated under ``eval()``; the original mode is restored afterwards.
+
+    ``predmodel`` may also be a plain callable ``f(x: np.ndarray) ->
+    array-like`` for JAX/Flax models; pass a ``functools.partial`` that
+    closes over the current parameter pytree, e.g.
+    ``functools.partial(model.apply, params)``.
+
+    Args:
+        predmodel: a PyTorch ``nn.Module`` for cost prediction, or a
+            JAX callable ``f(x_numpy) -> cost_array``
+        optmodel: a PyEPO optimization model
+        dataloader: PyTorch DataLoader over an ``optDataset`` (yielding
+            ``(x, c, w, z, ...)`` tuples; fields beyond the first four,
+            e.g. CaVE tight constraints, are ignored)
+        processes: number of processors, 1 for single-core, 0 for all of
+            cores; a fresh worker pool is spawned per call, each worker
+            rebuilding the model from its constructor args
+        reduction: "normalized" (sum of regrets over sum of absolute true
+            optima), "sum", "mean", or "none" (per-instance array)
+
+    Returns:
+        float or np.ndarray: aggregated regret, or per-instance regrets
+        when ``reduction="none"``
+    """
+    if reduction not in ("normalized", "sum", "mean", "none"):
+        raise ValueError(f"Invalid reduction '{reduction}'.")
+    require_linear_objective(optmodel)
+    processes = normalize_processes(optmodel, processes, logger)
+    losses = []
+    optsum = 0.0
+    torch_model = cast("nn.Module", predmodel) if isinstance(predmodel, torch.nn.Module) else None
+    pool = None
+    pool_initialized = False
+    try:
+        with torch_evaluation(torch_model) as device:
+            # load data
+            for data in dataloader:
+                x, c, _, z = data[:4]
+                if torch_model is not None:
+                    x, c, z = x.to(device), c.to(device), z.to(device)
+                    with torch.no_grad():
+                        cp = torch_model(x)
+                else:
+                    # JAX callable: f(x_numpy) -> array-like
+                    cp = torch.as_tensor(np.array(predmodel(x.numpy()), dtype=np.float32))
+                validate_prediction_batch(cp, c, optmodel.num_cost)
+                if not pool_initialized:
+                    # defer worker startup until the first prediction batch is valid
+                    pool = create_solver_pool(optmodel, processes)
+                    pool_initialized = True
+                # full cost so the MPAX backend can batch-set the objective in one call
+                sols, _ = _solve_batch(
+                    optmodel._fullCost(cp), optmodel, processes=processes, pool=pool
+                )
+                # vectorized regret accumulation (one host sync per batch)
+                sols_np = costToNumpy(sols)
+                c_np = costToNumpy(optmodel._fullCost(c))
+                z_np = costToNumpy(z).reshape(-1)
+                # bare objective constants live outside the dot product
+                obj = np.einsum("bi,bi->b", sols_np, c_np) + objective_offset(optmodel)
+                losses.append(regret_from_objective(obj, z_np, optmodel.modelSense))
+                optsum += float(np.abs(z_np).sum())
+    finally:
+        if pool is not None:
+            _close_pool(pool)
+    loss = np.concatenate(losses) if losses else np.empty(0)
+    # reduce
+    if reduction == "normalized":
+        return normalize_regret(loss.sum(), optsum)
+    if reduction == "sum":
+        return float(loss.sum())
+    if reduction == "mean":
+        return float(loss.mean()) if loss.size else 0.0
+    return loss
+
+
+def calRegret(
+    optmodel: optModel,
+    pred_cost: np.ndarray,
+    true_cost: np.ndarray,
+    true_obj: float,
+) -> float:
+    """
+    True regret of a single instance.
+
+    Args:
+        optmodel: optimization model
+        pred_cost: predicted cost vector
+        true_cost: true cost vector
+        true_obj: true optimal objective value
+
+    Returns:
+        float: true regret
+    """
+    pred_cost, true_cost, true_obj = validate_cost_vectors(
+        pred_cost, true_cost, true_obj, optmodel.num_cost
+    )
+    require_linear_objective(optmodel)
+    # opt sol for pred cost
+    optmodel._setFullObj(optmodel._fullCost(pred_cost))
+    sol, _ = optmodel.solve()
+    # MPAX backend returns a torch tensor; convert without coercing dtype
+    if isinstance(sol, torch.Tensor):
+        sol = sol.detach().cpu().numpy()
+    # full objective of the predicted decision at the true cost
+    obj = np.dot(sol, optmodel._fullCost(np.asarray(true_cost, dtype=float))) + objective_offset(
+        optmodel
+    )
+    return float(regret_from_objective(obj, true_obj, optmodel.modelSense))

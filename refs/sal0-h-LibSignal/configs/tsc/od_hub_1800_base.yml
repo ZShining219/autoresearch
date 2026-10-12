@@ -1,0 +1,43 @@
+# Shared 1800s hub-centric OD demand-set protocol (Level 1 / Level 2).
+# Paths are relative to world.dir (data/).
+#
+# Early-stop watches TRAIN median waiting time (uncapped, finished cars).
+# Each cycle is one pass over the 10 rotating train files.
+# m(t) = mean of those 10 episode medians.
+# Not improving if |m(t)-m(t-1)|/m(t-1) < 5% OR |m(t)-m(t-1)| < 1s.
+# Stop after 3 consecutive flat rotations. Hard cap 500.
+# Travel time is still logged (TRAIN / HELDOUT / TEST) for plots.
+# Held-out ATT still picks the best checkpoint.
+
+trainer:
+  steps: 1800
+  test_steps: 1800
+  episodes: 500
+  min_episodes: 30
+  early_stop: True
+  early_stop_mode: cycle_mean
+  early_stop_metric: wait
+  early_stop_patience: 3
+  early_stop_min_delta: 0.05
+  early_stop_abs_floor: 1.0
+  action_interval: 10
+  test_when_train: False
+  heldout_eval_every: 10
+
+world:
+  demand_train_file: raw_data/grid4x4/od_hubs/demand_set/fixed_1800.rou.xml
+  demand_set:
+    - raw_data/grid4x4/od_hubs/demand_set/train_00.rou.xml
+    - raw_data/grid4x4/od_hubs/demand_set/train_01.rou.xml
+    - raw_data/grid4x4/od_hubs/demand_set/train_02.rou.xml
+    - raw_data/grid4x4/od_hubs/demand_set/train_03.rou.xml
+    - raw_data/grid4x4/od_hubs/demand_set/train_04.rou.xml
+    - raw_data/grid4x4/od_hubs/demand_set/train_05.rou.xml
+    - raw_data/grid4x4/od_hubs/demand_set/train_06.rou.xml
+    - raw_data/grid4x4/od_hubs/demand_set/train_07.rou.xml
+    - raw_data/grid4x4/od_hubs/demand_set/train_08.rou.xml
+    - raw_data/grid4x4/od_hubs/demand_set/train_09.rou.xml
+  demand_heldout:
+    - raw_data/grid4x4/od_hubs/demand_set/hold_00.rou.xml
+    - raw_data/grid4x4/od_hubs/demand_set/hold_01.rou.xml
+    - raw_data/grid4x4/od_hubs/demand_set/hold_02.rou.xml

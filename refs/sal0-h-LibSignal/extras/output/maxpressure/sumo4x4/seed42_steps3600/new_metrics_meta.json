@@ -1,0 +1,103 @@
+{
+  "agent": "maxpressure",
+  "world": "sumo",
+  "network": "sumo4x4",
+  "prefix": "new_metrics",
+  "seed": 42,
+  "test_steps": 3600,
+  "action_interval": 10,
+  "generated_at": "2026-08-02T17:27:50",
+  "n_vehicles_logged": 1473,
+  "n_completed_trips": 1455,
+  "n_incomplete_trips": 18,
+  "completion_rate": 0.9877800407331976,
+  "trip_status_counts": {
+    "completed": 1455,
+    "on_map_at_end": 18
+  },
+  "eval_protocol": "TSCTrainer.test() aligned: greedy actions, collect_obs on last sub-step",
+  "pythonhashseed": 0,
+  "primary_efficiency_metric": "schedule_efficiency",
+  "metric_definitions": {
+    "travel_time_s": "Wall-clock time in network (LibSignal ATT uses mean over completed).",
+    "route_distance_m": "Sum of edge lengths on assigned route.",
+    "distance_traveled_m": "SUMO odometer at trip end (or at horizon for censored).",
+    "custom_wait_s": "Uncapped idle time (speed < 0.1 m/s each step).",
+    "waiting_fraction": "custom_wait_s / travel_time_s.",
+    "moving_fraction": "1 - waiting_fraction.",
+    "schedule_efficiency": "free_flow_time_s / travel_time_s in [0,1] (higher is better).",
+    "system_idle_share": "sum(custom_wait_s) / sum(travel_time_s) over a record set."
+  },
+  "sumo_accumulated_wait_note": "accumulated_waiting_time_s uses SUMO getAccumulatedWaitingTime(), which is capped by default --waiting-time-memory=100s. Do NOT use it for tail/fairness plots. custom_wait_s is uncapped (per-step speed < 0.1 m/s bookkeeping).",
+  "travel_time_stats_completed": {
+    "mean": 174.8618556701031,
+    "median": 172.0,
+    "p95": 284.29999999999995,
+    "max": 423.0
+  },
+  "travel_time_stats_incomplete": {
+    "mean": 155.72222222222223,
+    "median": 148.5,
+    "p95": 225.64999999999992,
+    "max": 269.0
+  },
+  "route_distance_stats_completed": null,
+  "distance_traveled_stats_completed": {
+    "mean": 1512.9553711340207,
+    "median": 1490.832,
+    "p95": 2373.8976,
+    "max": 2395.707
+  },
+  "schedule_efficiency_stats_completed": null,
+  "moving_fraction_stats_completed": {
+    "mean": 0.9100949140893473,
+    "median": 0.9498,
+    "p95": 0.9947,
+    "max": 0.9967
+  },
+  "waiting_fraction_stats_completed": {
+    "mean": 0.08990522336769759,
+    "median": 0.0502,
+    "p95": 0.3005399999999999,
+    "max": 0.7599
+  },
+  "custom_wait_stats_completed": {
+    "mean": 18.494158075601373,
+    "median": 8.0,
+    "p95": 69.59999999999991,
+    "max": 250.0
+  },
+  "custom_wait_stats_incomplete": {
+    "mean": 18.38888888888889,
+    "median": 16.5,
+    "p95": 39.3,
+    "max": 41.0
+  },
+  "custom_wait_stats_all": {
+    "mean": 18.492871690427698,
+    "median": 8.0,
+    "p95": 69.0,
+    "max": 250.0
+  },
+  "delay_stats_completed": null,
+  "time_loss_stats_all": {
+    "mean": 35.6207983706721,
+    "median": 26.894,
+    "p95": 95.72479999999997,
+    "max": 259.637
+  },
+  "system_idle_share_completed": 0.10576439329622991,
+  "system_idle_share_all": 0.10589868093162848,
+  "mean_schedule_efficiency_completed": NaN,
+  "mean_travel_time_s": 174.8618556701031,
+  "median_travel_time_s": 172.0,
+  "avg_travel_time_metric": 174.8618556701031,
+  "throughput": 1455,
+  "output_dir": "/home/madina/LibSignalFork/extras/output/maxpressure/sumo4x4/seed42_steps3600",
+  "csv_path": "/home/madina/LibSignalFork/extras/output/maxpressure/sumo4x4/seed42_steps3600/new_metrics.csv",
+  "vehicle_type_counts": {
+    "": 1455,
+    "DEFAULT_VEHTYPE": 18
+  },
+  "notes": "Plot histograms/ECDFs of travel_time_s and route_distance_m (completed first). Use schedule_efficiency and waiting_fraction for per-trip congestion shape. Report completion_rate alongside ATT. Censored trips: trip_status=on_map_at_end."
+}

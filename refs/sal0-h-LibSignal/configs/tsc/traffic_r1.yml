@@ -1,0 +1,61 @@
+includes:
+  - configs/tsc/base.yml
+  - configs/tsc/od_hub_1800_base.yml
+
+# Level 1 hub-OD inference with the local Season998/Traffic-R1 checkpoint.
+# The shared include supplies the train/held-out route-set protocol; this file
+# keeps the one-episode, inference-only evaluation settings below.
+model:
+  name: traffic_r1
+  # vLLM: fused decode, prefix cache, per-sequence stop on \boxed{ETWT|...}.
+  # Fall back to HuggingFace generate with backend: local (no vllm install).
+  backend: vllm
+
+  model_path: "Season998/Traffic-R1"
+  model_subfolder: "huggingface"
+  device_map: "auto"
+  torch_dtype: "bfloat16"
+
+  temperature: 0.0
+  max_new_tokens: 512
+  do_sample: False
+  parse_retries: 5
+
+  # Prompt is ~500 tokens + 512 new; cap KV cache so the MIG is not sized for 32k.
+  max_model_len: 4096
+  gpu_memory_utilization: 0.85
+  max_num_seqs: 32
+  enable_prefix_caching: true
+  # Same-process engine: LibSignal already created a CUDA context before the agent loads.
+  distributed_executor_backend: uni
+
+  # Observation (paper-derived four-signal interface).
+  v_stop: 0.1
+  n_segments: 3
+  obs_distance: 200
+
+  # Optional explicit map from signal name to LibSignal green index.
+  # phase_name_to_index:
+  #   NTST: 0
+  #   NLSL: 1
+  #   ETWT: 4
+  #   ELWL: 5
+
+trainer:
+  episodes: 1
+  steps: 1800
+  test_steps: 1800
+  buffer_size: 0
+  action_interval: 10
+  learning_rate: 0
+  learning_start: 0
+  update_model_rate: 0
+  update_target_rate: 0
+  test_when_train: False
+  heldout_eval_every: 0
+
+world:
+  demand_train_file: raw_data/grid4x4/od_hubs/demand_set/fixed_1800.rou.xml
+
+logger:
+  save_rate: 0

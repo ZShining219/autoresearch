@@ -1,0 +1,58 @@
+# conda build . -c conda-forge -c default -c pytorch -c gurobi
+# anaconda upload -u pyepo $(conda build --output .)
+
+package:
+  name: pyepo
+  version: 2.2.7
+
+source:
+  path: ./
+
+build:
+  noarch: python
+  string: py_0
+  number: 0
+  script: python -m pip install --no-deps --ignore-installed .
+
+requirements:
+  host:
+    - python >=3.9
+    - pip
+    - numpy
+    - tqdm
+  run:
+    - python >=3.9
+    - numpy
+    - scipy
+    - pathos
+    - tqdm
+    - scikit-learn
+    - pytorch >=1.13
+  # optional solver backends: constrain version when present, not hard deps
+  run_constrained:
+    - gurobi >=9.1.2
+    - pyomo >=6.1.2
+
+about:
+  home: https://github.com/khalil-research/PyEPO
+  license: MIT
+  license_file: LICENSE
+  summary: "PyTorch-based End-to-End Predict-then-Optimize Tool"
+  doc_url: https://khalil-research.github.io/PyEPO
+  dev_url: https://github.com/khalil-research/PyEPO
+  description: |
+    PyEPO (PyTorch-based End-to-End Predict-then-Optimize Tool) is a Python-based,
+    open-source software that supports modeling and solving predict-then-optimize problems
+    with linear objective functions. The core capability of PyEPO is to build optimization
+    models with GurobiPy, COPT, Pyomo, Google OR-Tools, MPAX, or any other solvers and
+    algorithms, then embed the optimization model into an artificial neural network for
+    the end-to-end training. For this purpose, PyEPO implements various methods as
+    PyTorch autograd modules.
+
+    Features:
+    - Implement SPO+, DBB, NID, DPO, PFYL, L2-regularized RFWO/RFYL, NCE, LTR, I-MLE, AI-MLE, PG, and CaVE for binary linear programs
+    - Support Gurobi, COPT, Pyomo, Google OR-Tools, and MPAX API
+    - Support parallel computing for optimization solvers
+    - Support solution caching to speed up training
+    - Support kNN robust loss to improve decision quality
+    - GPU-accelerated solving with MPAX (JAX-based PDHG solver)

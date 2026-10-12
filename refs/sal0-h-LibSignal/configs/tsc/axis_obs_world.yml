@@ -1,0 +1,4 @@
+# L2 single-axis: connected-vehicle penetration only.
+# Use L2's p=0.8, not the old M0 single-axis p=0.1.
+world:
+  obs_penetration: 0.8

@@ -1,0 +1,401 @@
+#!/usr/bin/env python
+"""Tests for pyepo.data.dataset: optDataset, optDatasetKNN, optDatasetConstrs.
+
+Exercises the real construction path (which solves one optimization per sample)
+on tiny instances, the kNN smoothing and its k-range guard, the CaVE
+binding-constraint dataset, and the error paths (bad model type, bad solve
+return, non-binary vertex).
+"""
+
+import numpy as np
+import pytest
+import torch
+
+from pyepo.data import shortestpath
+from pyepo.data.dataset import (
+    collate_tight_constraints,
+    optDataLoader,
+    optDataset,
+    optDatasetConstrs,
+    optDatasetKNN,
+)
+from pyepo.model.opt import optModel
+
+from .conftest import GRID, NUM_FEAT, partial_dsl_model, requires_gurobi
+
+_N = 6  # tiny: each sample triggers a solve at construction
+
+_DATASET_BUILDERS = [
+    pytest.param(optDataset, {}, id="standard"),
+    pytest.param(optDatasetKNN, {"k": 1}, id="knn"),
+    pytest.param(optDatasetConstrs, {}, id="constraints"),
+]
+
+
+# ============================================================
+# A minimal concrete optModel for testing error paths without a solver
+# ============================================================
+
+
+class _GoodModel(optModel):
+    """Returns a fixed feasible (sol, obj) pair."""
+
+    def __init__(self, num_cost=4):
+        self._num_cost = num_cost
+        super().__init__()
+
+    def _getModel(self):
+        return None, list(range(self._num_cost))
+
+    @property
+    def num_cost(self):
+        return self._num_cost
+
+    def setObj(self, c):
+        self._c = np.asarray(c, dtype=float)
+
+    def solve(self):
+        sol = np.ones(self._num_cost, dtype=np.float32)
+        return sol, float(self._c @ sol)
+
+
+class _BadReturnModel(_GoodModel):
+    """solve() returns a single value instead of (sol, obj)."""
+
+    def solve(self):
+        return np.ones(self._num_cost, dtype=np.float32)
+
+
+class _SolutionTypeModel(_GoodModel):
+    """Returns the same solution through a selected public solve type."""
+
+    def __init__(self, solution_type):
+        self._solution_type = solution_type
+        super().__init__()
+
+    def solve(self):
+        sol = self._solution_type(np.ones(self._num_cost, dtype=np.float32))
+        return sol, float(self._c.sum())
+
+
+# ============================================================
+# optDataset
+# ============================================================
+
+
+class TestDatasetInputContract:
+    """Shared constructor contract across dataset classes."""
+
+    @pytest.mark.parametrize(("dataset_cls", "kwargs"), _DATASET_BUILDERS)
+    def test_rejects_non_optmodel(self, dataset_cls, kwargs):
+        rng = np.random.RandomState(0)
+        x = rng.randn(_N, NUM_FEAT).astype(np.float32)
+        c = rng.randn(_N, 4).astype(np.float32)
+        with pytest.raises(TypeError):
+            dataset_cls("not_a_model", x, c, **kwargs)
+
+    @pytest.mark.parametrize(("dataset_cls", "kwargs"), _DATASET_BUILDERS)
+    def test_rejects_length_mismatch(self, dataset_cls, kwargs):
+        rng = np.random.RandomState(0)
+        x = rng.randn(3, NUM_FEAT).astype(np.float32)
+        c = rng.randn(4, 4).astype(np.float32)
+        with pytest.raises(ValueError, match="same number of instances"):
+            dataset_cls(_GoodModel(4), x, c, **kwargs)
+
+
+class TestOptDatasetErrors:
+    """Malformed solve() returns surface as errors."""
+
+    def test_bad_solve_return_raises(self):
+        rng = np.random.RandomState(0)
+        x = rng.randn(_N, NUM_FEAT).astype(np.float32)
+        c = rng.randn(_N, 4).astype(np.float32)
+        # a malformed solve() return surfaces as the raw unpacking error
+        with pytest.raises((TypeError, ValueError)):
+            optDataset(_BadReturnModel(4), x, c)
+
+
+class TestOptDatasetConcrete:
+    """Real construction path using the minimal concrete model (no solver)."""
+
+    @pytest.fixture
+    def ds(self):
+        x = np.random.RandomState(0).randn(_N, NUM_FEAT).astype(np.float32)
+        c = np.random.RandomState(1).randn(_N, 4).astype(np.float32)
+        return optDataset(_GoodModel(4), x, c)
+
+    def test_len(self, ds):
+        assert len(ds) == _N
+
+    def test_solved_shapes(self, ds):
+        assert ds.sols.shape == (_N, 4)
+        assert ds.objs.shape == (_N, 1)
+
+    def test_getitem_four_tensors(self, ds):
+        x, c, w, z = ds[2]
+        for t in (x, c, w, z):
+            assert isinstance(t, torch.Tensor)
+            assert t.dtype == torch.float32
+        assert x.shape == (NUM_FEAT,)
+        assert c.shape == (4,)
+        assert w.shape == (4,)
+        assert z.shape == (1,)
+
+    def test_objective_consistent_with_solution(self, ds):
+        # _GoodModel returns sol=ones, obj=c·ones
+        np.testing.assert_allclose(
+            ds.objs.numpy().ravel(),
+            ds.costs.numpy().sum(axis=1),
+            atol=1e-4,
+        )
+
+    @pytest.mark.parametrize("solution_type", [np.asarray, torch.as_tensor, list])
+    def test_normalizes_supported_solution_types(self, solution_type):
+        x = np.zeros((2, NUM_FEAT), dtype=np.float32)
+        c = np.ones((2, 4), dtype=np.float32)
+        ds = optDataset(_SolutionTypeModel(solution_type), x, c)
+
+        assert ds.sols.dtype == torch.float32
+        torch.testing.assert_close(ds.sols, torch.ones((2, 4)))
+
+
+@requires_gurobi
+class TestOptDatasetGurobi:
+    """Real solving via Gurobi: optimal objective equals cost·solution."""
+
+    def test_solution_optimal(self):
+        from pyepo.model.grb.shortestpath import shortestPathModel
+
+        x, c = shortestpath.genData(_N, NUM_FEAT, GRID, seed=42)
+        model = shortestPathModel(grid=GRID)
+        ds = optDataset(model, x, c)
+        # objs must equal costs · sols
+        recon = (ds.costs * ds.sols).sum(dim=1)
+        np.testing.assert_allclose(recon.numpy(), ds.objs.numpy().ravel(), atol=1e-4)
+
+
+# ============================================================
+# optDatasetKNN
+# ============================================================
+
+
+@requires_gurobi
+class TestOptDatasetKNN:
+    """kNN smoothing and parameter guards."""
+
+    def _model_data(self, n=12):
+        from pyepo.model.grb.shortestpath import shortestPathModel
+
+        x, c = shortestpath.genData(n, NUM_FEAT, GRID, seed=42)
+        return shortestPathModel(grid=GRID), x, c
+
+    @pytest.mark.parametrize("k", [0, -1, 1.5, True])
+    def test_invalid_k_raises(self, k):
+        model, x, c = self._model_data()
+        with pytest.raises(ValueError, match="positive integer"):
+            optDatasetKNN(model, x, c, k=k)
+
+    def test_k_equal_num_data_raises(self):
+        # guard is 1 <= k < num_data
+        model, x, c = self._model_data(n=12)
+        with pytest.raises(ValueError, match="1 <= k"):
+            optDatasetKNN(model, x, c, k=12)
+
+    @pytest.mark.parametrize("weight", [-0.1, 1.1, np.nan, np.inf, True])
+    def test_invalid_weight_raises(self, weight):
+        model, x, c = self._model_data()
+        with pytest.raises(ValueError, match="weight"):
+            optDatasetKNN(model, x, c, k=3, weight=weight)
+
+    def test_valid_k_constructs(self):
+        model, x, c = self._model_data(n=12)
+        ds = optDatasetKNN(model, x, c, k=3, weight=0.5)
+        assert len(ds) == 12
+        _feat, cost, sol, obj = ds[0]
+        assert cost.shape == (model.num_cost,)
+        assert sol.shape == (model.num_cost,)
+        assert obj.shape == (1,)
+
+    def test_partial_prediction_solution_keeps_full_length(self):
+        # DSL models with fixed variables return solutions longer than the cost
+        model = partial_dsl_model()
+        rng = np.random.default_rng(42)
+        feats = rng.standard_normal((_N, NUM_FEAT)).astype(np.float32)
+        costs = rng.uniform(1, 2, (_N, model.num_cost)).astype(np.float32)
+        ds = optDatasetKNN(model, feats, costs, k=3)
+        assert ds.sols.shape == (_N, 5)
+
+    def test_get_knn_shape_and_weight_boundary(self):
+        # weight=1 => smoothed cost equals the self cost for every neighbour
+        ds = object.__new__(optDatasetKNN)
+        n, d, k = 10, 3, 2
+        ds.feats = np.random.RandomState(0).randn(n, d).astype(np.float32)
+        ds.costs = np.random.RandomState(1).randn(n, d).astype(np.float32)
+        ds.k, ds.weight = k, 1.0
+        knn = ds._get_knn()
+        assert knn.shape == (n, d, k)
+        for i in range(n):
+            for j in range(k):
+                np.testing.assert_allclose(knn[i, :, j], ds.costs[i])
+
+
+# ============================================================
+# optDatasetConstrs (CaVE binding-constraint dataset)
+# ============================================================
+
+
+@requires_gurobi
+class TestOptDatasetConstrs:
+    """Binding-constraint extraction for CaVE."""
+
+    def test_construct_shortestpath(self):
+        from pyepo.model.grb.shortestpath import shortestPathModel
+
+        model = shortestPathModel(grid=GRID)
+        x, c = shortestpath.genData(4, NUM_FEAT, GRID, seed=42)
+        ds = optDatasetConstrs(model, x, c)
+        assert len(ds) == 4
+        assert len(ds.ctrs) == 4
+        for ctrs_i in ds.ctrs:
+            assert ctrs_i.shape[1] == model.num_cost
+
+    def test_rejects_non_binary_vertex(self):
+        from pyepo.model.grb.shortestpath import shortestPathModel
+
+        model = shortestPathModel(grid=GRID)
+        num_cost = model.num_cost
+
+        def fake_solve():
+            return np.full(num_cost, 0.5, dtype=np.float64), 0.0
+
+        # gurobipy.Model.__setattr__ blocks method override; proxy fakes Status
+        class _StatusProxy:
+            def __init__(self, real, status):
+                object.__setattr__(self, "_real", real)
+                object.__setattr__(self, "_fake_status", status)
+
+            @property
+            def Status(self):
+                return self._fake_status
+
+            def optimize(self, *a, **kw):
+                pass
+
+            def __getattr__(self, name):
+                return getattr(self._real, name)
+
+            def __setattr__(self, name, value):
+                setattr(self._real, name, value)
+
+        model.solve = fake_solve
+        model._model = _StatusProxy(model._model, 2)  # 2 == GRB.OPTIMAL
+        rng = np.random.RandomState(0)
+        x = rng.randn(2, NUM_FEAT).astype(np.float32)
+        c = rng.randn(2, num_cost).astype(np.float32)
+        with pytest.raises(ValueError, match="binary"):
+            optDatasetConstrs(model, x, c)
+
+    def test_binding_inequality_extracted_as_le_normal(self):
+        from pyepo.model.grb.knapsack import knapsackModel
+
+        # single <= capacity constraint the optimum fills exactly (slack 0)
+        model = knapsackModel(weights=np.array([[1.0, 1.0, 1.0]]), capacity=np.array([2.0]))
+        x = np.zeros((2, NUM_FEAT), dtype=np.float32)
+        # costs favour items 0 and 1: both selected, total weight 2 == capacity
+        c = np.tile([3.0, 2.0, 1.0], (2, 1)).astype(np.float32)
+        ds = optDatasetConstrs(model, x, c)
+        # the tight <= row is the item-weight vector, kept in <= orientation
+        rows = ds.ctrs[0].numpy()
+        assert any(np.allclose(r, [1.0, 1.0, 1.0]) for r in rows)
+
+
+@requires_gurobi
+class TestOrientConstraintRow:
+    """Canonical <= orientation of a single lazy-constraint normal (pure)."""
+
+    def test_orients_each_sense(self):
+        from gurobipy import GRB
+
+        from pyepo.data.dataset import _orient_constraint_row
+
+        row = np.array([1.0, -2.0, 3.0])
+        # <= kept as-is
+        (le,) = _orient_constraint_row(row, GRB.LESS_EQUAL)
+        np.testing.assert_array_equal(le, row)
+        # >= negated to <=
+        (ge,) = _orient_constraint_row(row, GRB.GREATER_EQUAL)
+        np.testing.assert_array_equal(ge, -row)
+        # == splits into <= and >=
+        eq = _orient_constraint_row(row, GRB.EQUAL)
+        np.testing.assert_array_equal(np.stack(eq), np.stack([row, -row]))
+
+    def test_rejects_unknown_sense(self):
+        from pyepo.data.dataset import _orient_constraint_row
+
+        with pytest.raises(ValueError, match="Invalid constraint sense"):
+            _orient_constraint_row(np.array([1.0]), "?")
+
+
+class TestCollateTightConstraints:
+    """Pure: ragged binding-constraint matrices pad to a common batch shape."""
+
+    def test_pads_to_max_rows(self):
+        x, c = torch.randn(2, 3), torch.randn(2, 4)
+        w, z = torch.randn(2, 4), torch.randn(2, 1)
+        ctrs0, ctrs1 = torch.randn(2, 4), torch.randn(5, 4)
+        batch = [
+            (x[0], c[0], w[0], z[0], ctrs0),
+            (x[1], c[1], w[1], z[1], ctrs1),
+        ]
+        _f, _c, _s, _o, padded = collate_tight_constraints(batch)
+        assert padded.shape == (2, 5, 4)
+        # the shorter matrix is zero-padded at the tail
+        assert torch.allclose(padded[0, 2:], torch.zeros(3, 4))
+
+
+class TestOptDataLoader:
+    """Pure: optDataLoader applies a dataset's collate_fn automatically."""
+
+    def test_constrs_collate_fn_wired(self):
+        assert optDatasetConstrs.collate_fn is collate_tight_constraints
+
+    def test_uses_dataset_collate_fn(self):
+        class _Ragged(list):
+            collate_fn = staticmethod(lambda batch: ("auto", len(batch)))
+
+        loader = optDataLoader(_Ragged([0, 1, 2, 3]), batch_size=2)
+        assert next(iter(loader)) == ("auto", 2)
+
+    def test_accepts_positional_dataloader_args(self):
+        loader = optDataLoader([0, 1, 2, 3], 2)
+        assert torch.equal(next(iter(loader)), torch.tensor([0, 1]))
+
+    def test_explicit_collate_fn_wins(self):
+        class _Ragged(list):
+            collate_fn = staticmethod(lambda batch: ("auto", len(batch)))
+
+        loader = optDataLoader(
+            _Ragged([0, 1, 2, 3]), batch_size=2, collate_fn=lambda b: ("explicit", len(b))
+        )
+        assert next(iter(loader)) == ("explicit", 2)
+
+    def test_positional_collate_fn_wins(self):
+        class _Ragged(list):
+            collate_fn = staticmethod(lambda batch: ("auto", len(batch)))
+
+        loader = optDataLoader(
+            _Ragged([0, 1, 2, 3]),
+            2,
+            None,
+            None,
+            None,
+            0,
+            lambda b: ("positional", len(b)),
+        )
+        assert next(iter(loader)) == ("positional", 2)
+
+    def test_plain_dataset_uses_default_collate(self):
+        data = [(torch.tensor([float(i)]),) for i in range(4)]
+        loader = optDataLoader(data, batch_size=2)
+        (batch,) = next(iter(loader))
+        assert batch.shape == (2, 1)

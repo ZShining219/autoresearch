@@ -1,0 +1,45 @@
+# LibSignal Python dependencies (SUMO-focused fork)
+#
+# Full environment (PyTorch, SUMO 1.26, torch-geometric, torch-scatter):
+#   chmod +x setup.sh && ./setup.sh
+# On shared servers without sudo:
+#   ./setup.sh --no-sudo
+#
+# This file covers pip-installable libraries only. Do not rely on it alone.
+
+# Core
+gymnasium>=0.26.0
+gym>=0.21.0
+numpy>=1.21.5,<2.0
+lmdb>=1.3.0
+mpmath>=1.2.1
+PyYAML>=6.0
+sympy>=1.10.1
+
+# Deep learning (versions should match setup.sh / your CUDA stack)
+torch>=1.10.0
+torchvision>=0.11.0
+torch-geometric>=2.0.0
+pfrl>=0.3.0
+stable-baselines3>=1.5.0
+
+# SUMO Python API (libsumo/eclipse-sumo installed by setup.sh on Linux)
+sumolib>=1.26.0
+traci>=1.26.0
+
+# Utilities
+matplotlib>=3.5.0
+pandas>=1.3.0
+seaborn>=0.11.0
+tqdm>=4.62.0
+
+# LLM traffic controller (optional; only needed when running --agent deepseek or traffic_r1)
+transformers>=4.45.0
+accelerate>=0.27.0
+openai>=1.0.0
+# Native JEV controller (--agent jev); no OpenAI or TypeSafe SDK required.
+requests>=2.31.0
+python-dotenv>=1.0.0
+# Optional GPU decode engine for configs/tsc/traffic_r1.yml (backend=vllm).
+# Pin against the same torch/CUDA as the env; do not install blindly on CPU:
+#   pip install vllm

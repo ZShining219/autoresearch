@@ -1,0 +1,335 @@
+#!/usr/bin/env python
+"""
+Abstract optimization model based on MPAX
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import logging
+from copy import deepcopy
+from functools import partial
+from typing import TYPE_CHECKING
+
+import torch
+
+try:
+    import jax
+    from jax import numpy as jnp
+    from jax.experimental.sparse import BCOO, BCSR, bcoo_concatenate
+    from mpax import create_lp, create_qp, raPDHG
+    from mpax.termination import TerminationStatus
+
+    _HAS_MPAX = True
+except ImportError:
+    _HAS_MPAX = False
+
+from pyepo import EPO
+from pyepo.model._common import validate_constraint, validate_objective_shape
+from pyepo.model.opt import optModel
+from pyepo.utils import costToNumpy
+
+if TYPE_CHECKING:
+    import numpy as np
+    from typing_extensions import Self
+
+logger = logging.getLogger(__name__)
+
+# warn once across all solves if PDHG stops short of OPTIMAL
+_warned_not_optimal = False
+
+
+def _warn_if_not_optimal(status) -> None:
+    """Warn once if any MPAX solve did not reach OPTIMAL termination."""
+    global _warned_not_optimal
+    if _warned_not_optimal:
+        return
+    flat = jnp.asarray(status).reshape(-1)
+    if not bool(jnp.any(flat != int(TerminationStatus.OPTIMAL))):
+        return
+    _warned_not_optimal = True
+    example = int(flat[jnp.argmax(flat != int(TerminationStatus.OPTIMAL))])
+    logger.warning(
+        "MPAX did not reach OPTIMAL termination for some instances (e.g. status=%s); "
+        "the returned solution may be suboptimal or infeasible. Consider raising iteration_limit.",
+        TerminationStatus(example).name,
+    )
+
+
+class optMpaxModel(optModel):
+    """
+    Abstract base class for MPAX-backed (JAX) linear / quadratic program models.
+
+    MPAX is a JAX implementation of the PDHG (Primal-Dual Hybrid Gradient)
+    first-order solver, designed for large-scale continuous programs that
+    benefit from GPU acceleration and vmap-batched solving. Unlike the
+    Gurobi / COPT / Pyomo / OR-Tools backends, an MPAX model has **no
+    explicit solver model object** -- the constraint matrices and bounds
+    *are* the model. Subclasses populate them inside ``_getModel`` and
+    return ``(None, [])``::
+
+        def _getModel(self):
+            self.A = jnp.array(...)   # equality A x = b
+            self.b = jnp.array(...)
+            self.G = jnp.array(...)   # inequality G x >= h
+            self.h = jnp.array(...)
+            self.l = jnp.array(...)   # variable lower bound
+            self.u = jnp.array(...)   # variable upper bound
+            # optional: leave None for LP, set for convex QP
+            self.Q = jnp.array(...)   # PSD; objective is 0.5 xᵀQx + cᵀx
+            return None, []
+
+    LP vs QP is selected automatically from ``self.Q``: ``None`` (default)
+    keeps the LP code path via ``create_lp``, any other value routes
+    through ``create_qp``. ``Q`` must be PSD; MPAX supports quadratic
+    *objective only* -- constraints stay linear (this is a hard MPAX
+    limit; e.g. a quadratic risk-budget constraint cannot be expressed).
+
+    Objective sense follows ``self.modelSense`` (set by a problem-level base
+    such as ``knapsackBase`` or directly in ``_getModel``; defaults to
+    minimization). Dense vs sparse matrices can be toggled by overriding the
+    class attribute ``use_sparse_matrix`` (default ``True``).
+
+    A single-instance solver and a ``vmap``-batched solver
+    (``batch_optimize``) are wrapped in JIT on construction. Compilation
+    happens on the first call for each input shape and dtype.
+
+    Attributes:
+        A (jax.Array | BCOO): equality-constraint matrix (Ax = b)
+        b (jnp.ndarray): equality-constraint right-hand side
+        G (jax.Array | BCOO): inequality-constraint matrix (Gx >= h)
+        h (jnp.ndarray): inequality-constraint right-hand side
+        l (jnp.ndarray): variable lower bounds
+        u (jnp.ndarray): variable upper bounds
+        Q (jax.Array | BCOO | None): PSD quadratic-objective matrix; ``None`` ⇒ LP
+        use_sparse_matrix (bool): whether to use sparse matrices
+        device: JAX device holding the model arrays and executing solves
+    """
+
+    use_sparse_matrix: bool = True
+    # None ⇒ LP path; subclasses opt into QP by assigning self.Q in _getModel
+    Q = None
+
+    def __init__(self) -> None:
+        if not _HAS_MPAX:
+            raise ImportError("MPAX is not installed. Please install MPAX to use this feature.")
+        super().__init__()
+        # MAXIMIZE with PSD Q is non-convex; reject early
+        if self.Q is not None and self.modelSense != EPO.MINIMIZE:
+            raise ValueError(
+                "MPAX QP path supports MINIMIZE sense only "
+                "(MAXIMIZE with PSD Q is non-convex). "
+                "Reformulate as MINIMIZE of -obj."
+            )
+        # init device
+        self.device = None
+        # cache JAX GPU device (None if CPU-only)
+        self._gpu_device = next((d for d in jax.devices() if d.platform == "gpu"), None)
+        self._has_jax_gpu = self._gpu_device is not None
+        # NumPy arrays expose no JAX device (NumPy 2 uses the string "cpu").
+        self.b = jnp.asarray(self.b)
+        self._move_to_device(self._gpu_device or self.b.device)
+
+    def __repr__(self) -> str:
+        return "optMpaxModel " + self.__class__.__name__
+
+    def _rebuild_jit(self) -> None:
+        """Rebuild solve functions; dispatches LP/QP from self.Q."""
+        if self.use_sparse_matrix:
+            # Convert outside tracing, using the actual nonzero count. MPAX's
+            # dense-to-BCOO fallback reserves one slot per dense matrix entry.
+            for name in ("A", "G", "Q"):
+                matrix = getattr(self, name)
+                if isinstance(matrix, BCSR):
+                    setattr(self, name, matrix.to_bcoo())
+                elif matrix is not None and not isinstance(matrix, BCOO):
+                    setattr(self, name, BCOO.fromdense(matrix))
+        # LP path
+        if self.Q is None:
+            # Keep LP construction inside tracing: dense create_lp otherwise
+            # eagerly allocates an unused n-by-n quadratic objective matrix.
+            solve_fn = partial(
+                self._jitted_solve_lp,
+                A=self.A,
+                b=self.b,
+                G=self.G,
+                h=self.h,
+                l=self.l,
+                u=self.u,
+                use_sparse_matrix=self.use_sparse_matrix,
+            )
+        # QP path (see _jitted_solve_qp)
+        else:
+            n = self.A.shape[1]
+            # placeholder c (replaced per call)
+            qp_template = create_qp(
+                self.Q,
+                jnp.zeros(n, dtype=jnp.float32),
+                self.A,
+                self.b,
+                self.G,
+                self.h,
+                self.l,
+                self.u,
+                use_sparse_matrix=self.use_sparse_matrix,
+            )
+            # Python bool keeps is_lp static under jit/vmap
+            qp_template = dataclasses.replace(qp_template, is_lp=False)
+            solve_fn = partial(self._jitted_solve_qp, qp_template=qp_template, Q=self.Q)
+        # single-instance jit; batch path keeps jit outermost for one fused executable
+        self.jitted_solve = jax.jit(solve_fn)
+        self.batch_optimize = jax.jit(jax.vmap(solve_fn))
+
+    @property
+    def num_cost(self) -> int:
+        """
+        number of costs to be predicted
+        """
+        return self.A.shape[1]
+
+    def setObj(self, c: np.ndarray | torch.Tensor | list) -> None:
+        """
+        A method to set the objective function
+
+        Args:
+            c: cost of objective function
+        """
+        validate_objective_shape(c, self.num_cost, allow_batch=True)
+        # check if c is a PyTorch tensor
+        if isinstance(c, torch.Tensor):
+            # move to cpu if JAX has no GPU support
+            c = c.cpu().detach() if not self._has_jax_gpu else c.detach()
+            # match float32 constraints; no-op (no copy) if already float32
+            c = c.to(torch.float32)
+            # convert PyTorch tensor to JAX array using DLPack
+            self.c = jnp.from_dlpack(c)
+            # keep solve on GPU even when cost came from a CPU tensor
+            if self._gpu_device is not None:
+                self.c = jax.device_put(self.c, self._gpu_device)
+            # move constraints and bounds to device
+            self._move_to_device(self.c.device)
+        # c is already a NumPy array
+        else:
+            self.c = jax.device_put(jnp.array(c, dtype=jnp.float32), self.device)
+        # change sign for maximization
+        if self.modelSense == EPO.MAXIMIZE:
+            self.c = -self.c
+
+    def solve(self) -> tuple[torch.Tensor, float]:
+        """
+        A method to solve the model
+
+        Returns:
+            tuple: optimal solution (torch.Tensor) and objective value (float)
+        """
+        # create lp model
+        sol, obj, status = self.jitted_solve(self.c)
+        _warn_if_not_optimal(status)
+        # convert to torch
+        sol = torch.from_dlpack(sol)
+        if self.modelSense == EPO.MINIMIZE:
+            obj = obj.item()
+        elif self.modelSense == EPO.MAXIMIZE:
+            obj = -obj.item()
+        else:
+            raise ValueError("Invalid modelSense.")
+        return sol, obj
+
+    @staticmethod
+    def _jitted_solve_lp(c, A, b, G, h, l, u, use_sparse_matrix):
+        """JIT-compiled LP solve (cᵀx)."""
+        lp = create_lp(c, A, b, G, h, l, u, use_sparse_matrix=use_sparse_matrix)
+        solver = raPDHG(
+            eps_abs=1e-4,
+            eps_rel=1e-4,
+            verbose=False,
+            iteration_limit=50_000,
+        )
+        result = solver.optimize(lp)
+        obj = jnp.dot(c, result.primal_solution)
+        return result.primal_solution, obj, result.termination_status
+
+    @staticmethod
+    def _jitted_solve_qp(c, qp_template, Q):
+        """
+        JIT-compiled QP solve (0.5 xᵀQx + cᵀx).
+
+        ``qp_template`` must have ``is_lp = False`` (a Python bool, not a
+        jnp scalar) so JAX's pytree flatten keeps it as static metadata;
+        ``raPDHG.check_config`` then branches on a concrete value instead
+        of a tracer. Solver instance is built inline (not closed over) to
+        avoid cross-trace state leaks via raPDHG's internal mutation in
+        ``select_initial_primal_weight``.
+        """
+        qp = dataclasses.replace(qp_template, objective_vector=c)
+        solver = raPDHG(
+            eps_abs=1e-4,
+            eps_rel=1e-4,
+            verbose=False,
+            iteration_limit=50_000,
+        )
+        result = solver.optimize(qp)
+        x = result.primal_solution
+        obj = 0.5 * jnp.dot(x, Q @ x) + jnp.dot(c, x)
+        return x, obj, result.termination_status
+
+    def copy(self) -> Self:
+        """
+        A method to copy the model
+
+        Returns:
+            optModel: new copied model
+        """
+        # jax Device objects can't be deepcopied; stash and restore around the copy
+        device, gpu_device = self.device, self._gpu_device
+        self.device = None
+        self._gpu_device = None
+        # copy new model
+        try:
+            new_model = deepcopy(self)
+        finally:
+            self.device, self._gpu_device = device, gpu_device
+        new_model.device, new_model._gpu_device = device, gpu_device
+        return new_model
+
+    def addConstr(self, coefs: np.ndarray | torch.Tensor | list, rhs: float) -> Self:
+        """
+        A method to add a new constraint
+
+        Args:
+            coefs: coefficients of new constraint
+            rhs: right-hand side of new constraint
+
+        Returns:
+            optModel: new model with the added constraint
+        """
+        rhs = validate_constraint(coefs, rhs, self.num_cost)
+        coefs_np = costToNumpy(coefs).copy()
+        # flip sign: PyEPO convention is `coefs · x <= rhs`, MPAX stores `G x >= h`
+        coefs = -jnp.array(coefs_np, dtype=jnp.float32).reshape(1, -1)
+        rhs = -rhs
+        # copy
+        new_model = self.copy()
+        new_model._append_inequality(coefs, rhs)
+        return new_model
+
+    def _append_inequality(self, row, rhs) -> None:
+        """Append a row in MPAX's >= convention without densifying the model."""
+        row = jax.device_put(row, self.device)
+        if self.use_sparse_matrix:
+            self.G = bcoo_concatenate([self.G, BCOO.fromdense(row)], dimension=0)
+        else:
+            self.G = jnp.concatenate([self.G, row], axis=0)
+        self.h = jnp.append(self.h, rhs)
+        self._rebuild_jit()
+
+    def _move_to_device(self, device) -> None:
+        """Rebuild captured arrays only when their device actually changes."""
+        if self.device == device:
+            return
+        self.device = device
+        for name in ("A", "b", "G", "h", "l", "u", "Q"):
+            value = getattr(self, name)
+            if value is not None:
+                setattr(self, name, jax.device_put(value, device))
+        self._rebuild_jit()

@@ -1,0 +1,5 @@
+includes:
+  - configs/tsc/ppo_pfrl.yml
+
+world:
+  hetero: true

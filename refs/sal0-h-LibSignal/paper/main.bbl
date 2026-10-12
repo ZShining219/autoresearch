@@ -1,0 +1,139 @@
+\begin{thebibliography}{23}
+\providecommand{\natexlab}[1]{#1}
+\providecommand{\url}[1]{\texttt{#1}}
+\expandafter\ifx\csname urlstyle\endcsname\relax
+  \providecommand{\doi}[1]{doi: #1}\else
+  \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
+
+\bibitem[Agarwal et~al.(2021)Agarwal, Schwarzer, Castro, Courville, and Bellemare]{agarwal2021rliable}
+Rishabh Agarwal, Max Schwarzer, Pablo~Samuel Castro, Aaron Courville, and Marc~G. Bellemare.
+\newblock Deep reinforcement learning at the edge of the statistical precipice.
+\newblock \emph{Advances in Neural Information Processing Systems}, 34, 2021.
+
+\bibitem[Ault and Sharon(2021)]{ault2021resco}
+James Ault and Guni Sharon.
+\newblock Reinforcement learning benchmarks for traffic signal control.
+\newblock In \emph{Proceedings of the Neural Information Processing Systems Track on Datasets and Benchmarks}, 2021.
+
+\bibitem[Chen et~al.(2020)Chen, Wei, Xu, Zheng, Yang, Xiong, Xu, and Li]{chen2020mplight}
+Chacha Chen, Hua Wei, Nan Xu, Guanjie Zheng, Ming Yang, Youhua Xiong, Kai Xu, and Zhenhui Li.
+\newblock {MPLight}: Toward scalable deep reinforcement learning for traffic signal control.
+\newblock \emph{Proceedings of the AAAI Conference on Artificial Intelligence}, 34\penalty0 (04):\penalty0 3414--3421, 2020.
+\newblock \doi{10.1609/aaai.v34i04.5744}.
+
+\bibitem[Chen et~al.(2022)Chen, Fang, and Sadeh]{chen2022realdeal}
+Rex Chen, Fei Fang, and Norman Sadeh.
+\newblock The real deal: A review of challenges and opportunities in moving reinforcement learning-based traffic signal control systems towards reality.
+\newblock In \emph{Proceedings of the 12th Workshop on Agents in Traffic and Transportation (ATT 2022)}, volume 3173 of \emph{CEUR Workshop Proceedings}, pages 14--31. CEUR-WS.org, 2022.
+\newblock URL \url{https://ceur-ws.org/Vol-3173/2.pdf}.
+
+\bibitem[Colas et~al.(2018)Colas, Sigaud, and Oudeyer]{colas2018seeds}
+C{\'e}dric Colas, Olivier Sigaud, and Pierre-Yves Oudeyer.
+\newblock How many random seeds? statistical power analysis in deep reinforcement learning experiments.
+\newblock 2018.
+
+\bibitem[Henderson et~al.(2018)Henderson, Islam, Bachman, Pineau, Precup, and Meger]{henderson2018matters}
+Peter Henderson, Riashat Islam, Philip Bachman, Joelle Pineau, Doina Precup, and David Meger.
+\newblock Deep reinforcement learning that matters.
+\newblock In \emph{Proceedings of the AAAI Conference on Artificial Intelligence}, volume~32, 2018.
+\newblock \doi{10.1609/aaai.v32i1.11694}.
+
+\bibitem[Islam et~al.(2022)Islam, Levin, Stern, and Ault]{islam2022mprealistic}
+Tanveer Islam, Michael~W. Levin, Raphael Stern, and James Ault.
+\newblock Performance evaluation of modified cyclic max-pressure controlled intersections in realistic corridors.
+\newblock \emph{Transportation Research Record}, 2022.
+\newblock \doi{10.1177/03611981211072807}.
+\newblock Check exact author list against final TRR version.
+
+\bibitem[Lai et~al.(2024)Lai, Xu, Zhang, Liu, and Xiong]{lai2024llmlight}
+Siqi Lai, Zhao Xu, Weijia Zhang, Hao Liu, and Hui Xiong.
+\newblock {LLMLight}: Large language models as traffic signal control agents, 2024.
+\newblock KDD 2025 version forthcoming.
+
+\bibitem[Lopez et~al.(2018)Lopez, Behrisch, Bieker-Walz, Erdmann, Fl{\"o}tter{\"o}d, Hilbrich, L{\"u}cken, Rummel, Wagner, and Wie{\ss}ner]{lopez2018sumo}
+Pablo~Alvarez Lopez, Michael Behrisch, Laura Bieker-Walz, Jakob Erdmann, Yun-Pang Fl{\"o}tter{\"o}d, Robert Hilbrich, Leonhard L{\"u}cken, Johannes Rummel, Peter Wagner, and Evamarie Wie{\ss}ner.
+\newblock Microscopic traffic simulation using {SUMO}.
+\newblock In \emph{21st International Conference on Intelligent Transportation Systems (ITSC)}, pages 2575--2582. IEEE, 2018.
+\newblock \doi{10.1109/ITSC.2018.8569938}.
+
+\bibitem[Lowe et~al.(2017)Lowe, Wu, Tamar, Harb, Abbeel, and Mordatch]{lowe2017maddpg}
+Ryan Lowe, Yi~Wu, Aviv Tamar, Jean Harb, Pieter Abbeel, and Igor Mordatch.
+\newblock Multi-agent actor-critic for mixed cooperative-competitive environments.
+\newblock \emph{Advances in Neural Information Processing Systems}, 30, 2017.
+
+\bibitem[Mei et~al.(2023)Mei, Lei, Da, Shi, and Wei]{mei2023libsignal}
+Hao Mei, Xiaoliang Lei, Longchao Da, Bin Shi, and Hua Wei.
+\newblock Libsignal: An open library for traffic signal control.
+\newblock \emph{Machine Learning}, 2023.
+\newblock \doi{10.1007/s10994-023-06412-y}.
+
+\bibitem[Noaeen et~al.(2021)Noaeen, Naik, Goodman, Crebo, Abrar, Bazzan, and Far]{noaeen2021recent}
+Mohammad Noaeen, Atharva Naik, Liana Goodman, Jared Crebo, Taimoor Abrar, Ana L{\'u}cia~C. Bazzan, and Behrouz Far.
+\newblock Recent advances in reinforcement learning for traffic signal control.
+\newblock In \emph{Proceedings of the 30th ACM International Conference on Information \& Knowledge Management}, 2021.
+\newblock See also ACM SIGKDD Explorations survey lineage; verify venue.
+
+\bibitem[Rodrigues and Azevedo(2019)]{rodrigues2019towards}
+Filipe Rodrigues and Carlos~Lima Azevedo.
+\newblock Towards robust deep reinforcement learning for traffic signal control: Demand surges, incidents and sensor failures.
+\newblock In \emph{NeurIPS Workshop / arXiv preprint}, 2019.
+\newblock CAREL / AIMSUN study of demand, incidents, sensor failure.
+
+\bibitem[Schulman et~al.(2017)Schulman, Wolski, Dhariwal, Radford, and Klimov]{schulman2017ppo}
+John Schulman, Filip Wolski, Prafulla Dhariwal, Alec Radford, and Oleg Klimov.
+\newblock Proximal policy optimization algorithms.
+\newblock 2017.
+
+\bibitem[Tan et~al.(2020)Tan, Sharma, and Sarkar]{tan2020robust}
+Kai~Liang Tan, Anuj Sharma, and Soumik Sarkar.
+\newblock Robust deep reinforcement learning for traffic signal control.
+\newblock \emph{Journal of Big Data Analytics in Transportation}, 2\penalty0 (3):\penalty0 263--274, 2020.
+\newblock \doi{10.1007/s42421-020-00029-6}.
+
+\bibitem[Varaiya(2013)]{varaiya2013maxpressure}
+Pravin Varaiya.
+\newblock Max pressure control of a network of signalized intersections.
+\newblock \emph{Transportation Research Part C: Emerging Technologies}, 36:\penalty0 177--195, 2013.
+\newblock \doi{10.1016/j.trc.2013.08.014}.
+
+\bibitem[Webster(1958)]{webster1958}
+F.~V. Webster.
+\newblock Traffic signal settings.
+\newblock Technical Report~39, Road Research Laboratory, 1958.
+
+\bibitem[Wei et~al.(2018)Wei, Zheng, Yao, and Li]{wei2018intellilight}
+Hua Wei, Guanjie Zheng, Huaxiu Yao, and Zhenhui Li.
+\newblock {IntelliLight}: A reinforcement learning approach for intelligent traffic light control.
+\newblock In \emph{Proceedings of the 24th ACM SIGKDD International Conference on Knowledge Discovery \& Data Mining}, pages 2496--2505, 2018.
+\newblock \doi{10.1145/3219819.3220096}.
+
+\bibitem[Wei et~al.(2019{\natexlab{a}})Wei, Chen, Zheng, Wu, Gayah, Xu, and Li]{wei2019presslight}
+Hua Wei, Chacha Chen, Guanjie Zheng, Kan Wu, Vikash Gayah, Kai Xu, and Zhenhui Li.
+\newblock {PressLight}: Learning max pressure control to coordinate traffic signals in arterial network.
+\newblock In \emph{Proceedings of the 25th ACM SIGKDD International Conference on Knowledge Discovery \& Data Mining}, pages 1290--1298, 2019{\natexlab{a}}.
+\newblock \doi{10.1145/3292500.3330949}.
+
+\bibitem[Wei et~al.(2019{\natexlab{b}})Wei, Xu, Zhang, Zheng, Zang, Chen, Zhang, Zhu, Xu, and Li]{wei2019colight}
+Hua Wei, Nan Xu, Huichu Zhang, Guanjie Zheng, Xinshi Zang, Chacha Chen, Weinan Zhang, Yamin Zhu, Kai Xu, and Zhenhui Li.
+\newblock {CoLight}: Learning network-level cooperation for traffic signal control.
+\newblock In \emph{Proceedings of the 28th ACM International Conference on Information and Knowledge Management (CIKM)}, pages 1913--1922, 2019{\natexlab{b}}.
+\newblock \doi{10.1145/3357384.3357900}.
+
+\bibitem[Wei et~al.(2019{\natexlab{c}})Wei, Zheng, Gayah, and Li]{wei2019survey}
+Hua Wei, Guanjie Zheng, Vikash Gayah, and Zhenhui Li.
+\newblock A survey on traffic signal control methods.
+\newblock 2019{\natexlab{c}}.
+
+\bibitem[Yau et~al.(2017)Yau, Qadir, Khoo, Ling, and Komisarczuk]{yau2017survey}
+Kok-Lim~Alvin Yau, Junaid Qadir, Hooi~Ling Khoo, Mee~Hong Ling, and Peter Komisarczuk.
+\newblock A survey on reinforcement learning models and algorithms for traffic signal control.
+\newblock \emph{ACM Computing Surveys}, 50\penalty0 (3):\penalty0 1--38, 2017.
+\newblock \doi{10.1145/3068287}.
+
+\bibitem[Zhang et~al.(2019)Zhang, Feng, Liu, Ding, Guo, Qiu, Liu, Zhu, Jin, and Li]{zhang2019cityflow}
+Huichu Zhang, Siyuan Feng, Chang Liu, Yaoyao Ding, Yichen Guo, Jing Qiu, Zhen Liu, Yamin Zhu, Hai Jin, and Zhenhui Li.
+\newblock {CityFlow}: A multi-agent reinforcement learning environment for large scale city traffic scenario.
+\newblock In \emph{The World Wide Web Conference (WWW)}, pages 3620--3624, 2019.
+\newblock \doi{10.1145/3308558.3314139}.
+
+\end{thebibliography}

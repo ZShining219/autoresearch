@@ -1,0 +1,262 @@
+\documentclass[conference]{IEEEtran}
+
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{url}
+\usepackage{hyperref}
+
+\hypersetup{colorlinks=true, linkcolor=blue!50!black, citecolor=blue!50!black, urlcolor=blue!60!black}
+
+\newcommand{\mpol}{Max-Pressure}
+\newcommand{\realismfull}{\texttt{realism\_full}}
+
+\begin{document}
+
+\title{Realism-Composed Benchmarking for Traffic Signal Control:\\ When Classical Controllers Do Not Fail Under Realistic Simulation}
+
+\author{
+\IEEEauthorblockN{Madina Mirzatayeva}
+\IEEEauthorblockA{Carnegie Mellon University in Qatar\\
+Doha, Qatar\\
+mmirzata@andrew.cmu.edu}
+\and
+\IEEEauthorblockN{Salman Hajizada}
+\IEEEauthorblockA{Carnegie Mellon University in Qatar\\
+Doha, Qatar\\
+shajizad@andrew.cmu.edu}
+\and
+\IEEEauthorblockN{Gianni Di Caro}
+\IEEEauthorblockA{Carnegie Mellon University in Qatar\\
+Doha, Qatar\\
+gdicaro@andrew.cmu.edu}
+}
+
+\maketitle
+
+\begin{abstract}
+Reinforcement learning (RL) for traffic signal control (TSC) is routinely evaluated on homogeneous, fully observed microsimulations that replay a single fixed demand file every episode. Under those idealized conditions, learned policies often appear to dominate classical controllers such as max-pressure, yet this comparison conflates algorithmic advantage with simulation idealism. Building on LibSignal, we introduce a two-stage realism-composed protocol: Stage~1 integrates five independently toggled realism axes into the simulation environment, heterogeneous fleets, slow-start discharge, actuated pedestrian crossing proxies, connected-vehicle penetration, and Gaussian count noise; Stage~2 addresses additional realism concerns absent from standard benchmarks, namely hub-centric travel patterns, within-network departures, time-of-day demand structure, and stochastic cross-episode demand with held-out evaluation. Across a 4$\times$4 grid and an Ingolstadt 1$\times$21 arterial, we find that (i)~controller rankings are fragile under changes in topology and realism profile; (ii)~effect sizes between RL and max-pressure are frequently small relative to the travel-time uplift induced by realism itself; and (iii)~under compound plant and sensor stress, max-pressure remains a strong anchor while several RL agents degrade, contrary to narratives that classical methods fail in realistic environments. This work attempts to fill the sim-to-real gap in TSC evaluation by introducing this compositional protocol and the empirical evidence it enables.
+\end{abstract}
+
+\begin{IEEEkeywords}
+traffic signal control, reinforcement learning, sim-to-real, max-pressure, benchmarking
+\end{IEEEkeywords}
+
+% ==============================================================================
+\section{Introduction}
+% ==============================================================================
+
+Traffic signal control (TSC) benchmarks increasingly compare classical policies such as max-pressure~\cite{varaiya2013maxpressure} against deep reinforcement learning (RL) methods on open platforms like LibSignal~\cite{mei2023libsignal} and RESCO~\cite{ault2021resco}. A persistent motivation in this literature is that max-pressure, though throughput-optimal under idealized queueing, fails under realistic conditions: PressLight~\cite{wei2019presslight} argues it is locally suboptimal when physical queues expand and downstream capacity is limited, CoLight~\cite{wei2019colight} extends this critique to networks requiring cooperation, and surveys repeat these claims as received wisdom~\cite{wei2019survey, noaeen2021recent}, while the RealDeal survey~\cite{chen2022realdeal} catalogs detection uncertainty, communication loss, and heterogeneous road users as mechanisms by which idealized control degrades toward deployment. Yet these claims are empirically under-tested once the simulator itself becomes realistic: standard benchmarks assume homogeneous vehicles, perfect detectors, no pedestrians, and a single fixed demand replayed every episode, a setting in which learned policies can memorize the traffic movie rather than control under uncertainty, and mean performance over one seed on one scenario is a thin ranking signal when conditions shift by tens of seconds~\cite{agarwal2021rliable}.
+
+Our central claim inverts the narrative: when we introduce realism into the simulation in a controlled, compositional way, we do not observe a systematic collapse of max-pressure relative to popular RL controllers; instead rankings reshuffle with topology and realism profile, effect sizes are often small, and compound realism can hurt RL as much as or more than classical baselines, with corridor studies reporting that engineered max-pressure variants remain competitive under realistic demand~\cite{islam2022mprealistic}. We start by reproducing the LibSignal Grid~4$\times$4 table to establish a trusted baseline, then layer realism onto the corrected network and add Ingolstadt~1$\times$21 as a second topology, comparing the two only on rankings and rank stability, never absolute travel time. The paper contributes a realism-axis taxonomy with single-axis ablations and a composed \realismfull{} profile; a demand-realism protocol addressing hub-centric OD, within-network departures, time-of-day structure, and stochastic held-out evaluation; empirical evidence on two networks showing topology-dependent and realism-fragile leaderboards; and a metric critique covering trip-level distributions and effect-size-versus-rank analysis.
+
+% ==============================================================================
+\section{Related Work}
+% ==============================================================================
+
+Recent TSC benchmarking has moved from single-network leaderboard comparisons toward broader scrutiny of what realistic evaluation requires. Open libraries such as LibSignal~\cite{mei2023libsignal} and RESCO~\cite{ault2021resco} standardize agents and metrics across SUMO~\cite{lopez2018sumo} and CityFlow~\cite{zhang2019cityflow}, but both generally assume homogeneous fleets, perfect detection, and a single repeating demand file, which can let learned policies memorize one traffic movie rather than generalize. Deployment-barrier surveys catalog detection uncertainty, communication loss, compliance, and heterogeneous road users as frictions that idealized control does not face~\cite{chen2022realdeal}, and prior robustness work injects queue noise~\cite{tan2020robust} or demand surges and sensor failures~\cite{rodrigues2019towards}, but in isolation rather than compositionally. A separate line motivates RL by arguing max-pressure is greedy and fails when physical queues expand or cooperation is needed~\cite{wei2019presslight, wei2019colight, wei2019survey, noaeen2021recent}, while transportation-side corridor studies report that engineered max-pressure variants remain competitive under realistic demand~\cite{islam2022mprealistic}, a counterpoint to that narrative. Work on deep RL evaluation more broadly shows seed variance and small effect sizes inflate apparent wins~\cite{henderson2018matters, colas2018seeds, agarwal2021rliable}, suggesting TSC leaderboards deserve the same skepticism. Our work differs by composing plant, sensor, and demand realism into a single protocol and using it to re-examine whether the classical-versus-RL ranking actually holds once the simulator stops being idealized.
+
+% ==============================================================================
+\section{Field Gaps in Realism Benchmarking}
+% ==============================================================================
+
+Current RL-TSC evaluation rests on a set of simplifications that, individually, are defensible modeling choices but, collectively, construct a benchmark in which memorization can masquerade as control and idealized sensing as robustness.
+
+The simulation itself idealizes both the physical environment and the sensing through which the controller observes it. Vehicle fleets are homogeneous: every agent shares identical dynamics, which suppresses the queue discharge variance and differential saturation-flow effects that trucks and passenger cars produce in real traffic. Queue discharge is instantaneous and uniform at green onset, ignoring the sluggish, stochastic start-up that real platoons exhibit. Pedestrians are absent, removing a routine source of green-time loss at deployed intersections. And detection is perfect: controllers read complete, noiseless lane counts as if every vehicle were fully instrumented, a condition no deployed system provides, so the policies never face the partial observability and measurement noise that characterize real signal control.
+
+Beyond what the simulator models, the evaluation protocol carries its own idealizations. Demand is typically a single fixed route file replayed every episode, so a controller can memorize departure times and OD structure rather than generalize across demand realizations. Origins are confined to the network fringe, omitting the within-network departures that real urban networks generate from parking, driveways, and intermediate zones. Destinations are spatially uniform, lacking the hub structure that concentrates pressure at a few high-attraction approaches and shapes coordination demands. Demand has no time-of-day structure, so shoulder and peak periods that govern real signal timing never enter training or evaluation. And the evaluation window is narrow: methods are frequently compared over two or three simulation steps or seconds, a timescale at which effect sizes cannot be meaningfully distinguished from noise.
+
+None of these omissions is novel as a critique, and several have been noted in the deployment-barrier and robustness literature~\cite{chen2022realdeal, tan2020robust, rodrigues2019towards}. What is missing is a protocol that composes them rather than studying each in isolation, so that interactions between plant, sensor, and demand realism are visible and the ranking under compound stress can be tested against the ranking on the idealized benchmark.
+
+% ==============================================================================
+\section{Proposed Solution: A Two-Stage Realism-Composed Protocol}
+% ==============================================================================
+
+We address the field gaps with a two-stage protocol. Stage~1 targets the physical and sensing idealizations by introducing five realism axes into the simulation environment, composed into a single profile. Stage~2 targets the evaluation-protocol idealizations by introducing a demand-realism layer with held-out generalization testing.
+
+\subsection{Stage 1: Realism Axes}
+
+Unlike prior robustness work that injects a single perturbation in isolation~\cite{tan2020robust, rodrigues2019towards}, our axes are implemented as no-op defaults in the LibSignal/SUMO stack so the homogeneous baseline is exactly recoverable, and each axis can be toggled independently or composed with the others. Every axis is a concrete configuration hook: vTypes, phase logic, or observation parameters.
+
+\textbf{A1. Heterogeneous fleet.} Replaces the single default passenger-car type with two vTypes: passenger cars (80\%) and trucks (20\%) carrying distinct length, acceleration, and headway parameters, routed via a mixed route file. This exposes the controller to differential saturation flow and platoon structure across the fleet mix.
+
+\textbf{A2. Slow-start discharge.} Modifies the vType attributes themselves: passenger cars receive $\text{accel}{=}1.0$, $\tau{=}1.9$ and trucks $\text{accel}{=}1.2$, $\tau{=}2.1$, modeling the sluggish, stochastic start-up that real platoons exhibit after green onset.
+
+\textbf{A3. Crossing proxy.} Injects pedestrian conflict without simulating explicit \texttt{<person>} agents. With probability $p{=}0.12$ on through-green entry, the phase is held for $T \sim \mathrm{Unif}(7,10)$\,s and the mapped through lanes are halted, approximating a pedestrian call. This adds green-time loss using SUMO's phase-control hooks rather than full multimodal simulation.
+
+\textbf{A4. Penetration.} Corrupts the observation: each vehicle is flagged visible for its entire trip with probability $p{=}0.8$ (persistent Bernoulli draw), and lane counts seen by the controller are built from the visible subset only.
+
+\textbf{A5. Count noise.} Adds independent $\mathcal{N}(0, \sigma^2)$ noise ($\sigma{=}2$) to each lane count at each step, clamped at zero, so the controller's queue and pressure features are perturbed even when underlying traffic is deterministic.
+
+Axes A1--A3 are \emph{plant} axes: they alter the physical simulation and thus the ground-truth travel time. Axes A4--A5 are \emph{sensor} axes: they corrupt what the controller observes while the measured average travel time (ATT) remains ground-truth, so degraded sensing is not conflated with degraded physical performance. All five axes compose simultaneously into a \realismfull{} profile, allowing compound, potentially superlinear stress to be tested against the sum of single-axis effects.
+
+\subsection{Stage 2: Demand Realism}
+
+Stage~2 replaces the single-movie protocol with a generated demand set that introduces hub structure, within-network departures, time-of-day variation, and cross-episode stochasticity, with held-out evaluation on unseen route files.
+
+The demand set is generated for a 1800\,s horizon. A Traffic Analysis Zone (TAZ) file partitions the grid into three zone classes: fringe (network entry edges), internal (edges inside the network), and hub (edges at designated high-attraction intersections). An OD matrix is constructed via a gravity model that biases destinations toward hub zones, and \texttt{od2trips} renders route files with random departure times drawn inside each time bin. The generator outputs 14 route files: 10 training files and 3 held-out files, plus a fixed movie for compatibility. Each file is a fresh stochastic draw from the OD matrix and the timeline, so cross-episode demand varies while the underlying hub structure is preserved. During training, episode $e$ loads \texttt{train\_[e mod 10]}; held-out evaluation runs greedy rollouts on the three hold files and reports \texttt{HELDOUT\_MEAN} (mean vehicle ATT over the held-out set), so the score reflects generalization, not memorization.
+
+The realized demand meets the realism concerns as follows. Origins split 65.1\% fringe / 34.9\% within-network, so vehicles legitimately depart from inside the network. Destinations concentrate at hubs: approximately 88\% of trips end at hub edges and 95\% touch a hub edge at some point in their route. The timeline uses six 300\,s bins with shoulder-and-peak weights (0.08, 0.12, 0.22, 0.28 peak, 0.18, 0.12), and the pooled realized shares match the design within 0.1\%. Volume is a Gaussian draw per file (794 $\pm$ 26 vehicles). The demand layer composes with Stage~1 in two levels: demand only (homo plant, full observability) and demand plus \realismfull.
+
+% ==============================================================================
+\section{Methods}
+% ==============================================================================
+
+All experiments run on SUMO~\cite{lopez2018sumo} via the \texttt{libsumo} interface, chosen over CityFlow~\cite{zhang2019cityflow} because SUMO exposes the vehicle-type, detector-penetration, and phase-control hooks that the realism axes require. We build on LibSignal~\cite{mei2023libsignal} for its reproducible agent registry, training loop, and standardized ATT computation, and because it provides a cited baseline table against which we verify reproduction before layering realism. RESCO~\cite{ault2021resco} supplies the Ingolstadt network.
+
+Two networks are tested: a corrected 4$\times$4 grid (16 signalized intersections) and an Ingolstadt 1$\times$21 arterial (21 signalized intersections). The shipped LibSignal \texttt{grid4x4.net.xml} had invalid NEMA signal-phase placements; it was corrected prior to all realism runs, and reproduction on the pre-fix network is reported only as a gate. The two networks are trained and evaluated separately and compared solely on rankings and rank stability, never absolute ATT. Seed is 42 throughout, with a 10\,s action interval.
+
+Four experiment types are run. First, single-axis ablations: each of the five realism axes is toggled individually with all others off. Second, compound realism: all five axes compose into \realismfull. Third, demand realism: the hub-centric OD demand set replaces the fixed movie, with held-out evaluation, tested both alone and composed with \realismfull. Fourth, reproduction: the LibSignal Table~8 numbers are reproduced on the corrected network. Agents span classical baselines (FixedTime, MaxPressure) and RL methods (DQN, PressLight~\cite{wei2019presslight}, CoLight~\cite{wei2019colight}) using LibSignal defaults. RL agents train for 200 episodes on movie-style runs (3600\,s) and 100 episodes on OD-hub runs (1800\,s); baselines run a single evaluation episode. The primary metric is ATT over completed trips, measured on ground-truth physics; for OD-hub runs it is \texttt{HELDOUT\_MEAN}. Effect sizes are reported as ATT delta in seconds against MaxPressure under the same profile.
+
+% ==============================================================================
+\section{Results}
+% ==============================================================================
+
+\subsection{Reproduction and Corrected Baselines}
+
+On the pre-fix 4$\times$4 network we reproduced the LibSignal Table~8 numbers within roughly 2.4\%, confirming the baseline setup is trusted. After correcting the invalid NEMA phase placements, homo baselines shift to MaxPressure 173.3\,s and FixedTime 219.1\,s. On the corrected network, the RL agents cluster tightly at or below MaxPressure: DQN 167.9\,s, CoLight 173.1\,s, PressLight 174.4\,s. This is the idealized regime in which RL appears to dominate, and it is the reference against which realism stress is measured.
+
+\subsection{Single-Axis Effects}
+
+When realism axes are toggled individually on the 4$\times$4 grid (Table~\ref{tab:axes4x4}), the leaderboard begins to shift. Slow-start discharge and heterogeneous fleets add a modest ATT tax of roughly 10--20\,s across all methods without reversing the MaxPressure-approximates-RL band. Penetration at $p{=}0.8$ mildly hurts everyone. Gaussian count noise at $\sigma{=}2$ is the harshest single axis: it destabilizes CoLight (312.2\,s) while MaxPressure rises only to 200.9\,s, flipping the ranking to MaxPressure-best. The crossing proxy adds 5--8\,s for most methods.
+
+\begin{table}[t]
+\centering
+\caption{Single-axis realism on corrected \texttt{sumo4x4} (final ATT, seed~42).}
+\label{tab:axes4x4}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrrrrr}
+\toprule
+Method & Homo & Slow & Hetero & Obs & Noise \\
+\midrule
+DQN         & 167.9 & 185.3 & 184.0 & 183.3 & 231.8 \\
+CoLight     & 173.1 & 190.4 & 189.1 & 185.1 & 312.2 \\
+MaxPressure & 173.3 & 186.1 & 189.4 & 185.4 & 200.9 \\
+PressLight  & 174.4 & 191.0 & 189.3 & 185.8 & 201.9 \\
+FixedTime   & 219.1 & 243.7 & 240.5 & 219.7 & 219.7 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+On the Ingolstadt arterial (Table~\ref{tab:axes1x21}), the sensitivity profile differs. Partial observability is brutally destructive on the corridor: MaxPressure rises to 587.0\,s, DQN to 533.7\,s, PressLight to 556.9\,s. The crossing proxy raises ATT substantially (MaxPressure 227.7\,s, CoLight 401.9\,s). CoLight lags more severely on the arterial than on the grid across every axis.
+
+\begin{table}[t]
+\centering
+\caption{Single-axis realism on Ingolstadt \texttt{sumo1x21} (final ATT, seed~42).}
+\label{tab:axes1x21}
+\setlength{\tabcolsep}{3.5pt}
+\begin{tabular}{lrrrrr}
+\toprule
+Method & Hetero & Slow & Cross & Obs & Noise \\
+\midrule
+MaxPressure & 336.2 & 308.5 & 227.7 & 587.0 & 243.9 \\
+FixedTime   & 342.3 & 434.6 & 285.1 & 270.3 & 270.3 \\
+DQN         & 353.8 & 317.9 & 316.2 & 533.7 & 348.9 \\
+PressLight  & 318.6 & 301.6 & 249.3 & 556.9 & 297.9 \\
+CoLight     & 463.3 & 502.0 & 401.9 & 530.2 & 389.1 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Compound Realism}
+
+When all five axes compose into \realismfull{} on the 4$\times$4 grid (Table~\ref{tab:full4x4}), the leaderboard reorders sharply. MaxPressure is the anchor at 237.5\,s. PressLight tracks it at 248.0\,s. DQN degrades to 282.8\,s. CoLight collapses to 494.6\,s with throughput dropping from 1434 to 1322 completed trips. The compound ATT uplift on MaxPressure alone is +64\,s over homo, larger than any single axis, and the spread between MaxPressure and the worst RL agent is over 250\,s. This is the central empirical result: under compound plant and sensor stress, the classical baseline degrades most gracefully while sophisticated graph-attention RL fails to stay stable.
+
+\begin{table}[t]
+\centering
+\caption{\realismfull{} on \texttt{sumo4x4}. $\Delta$ vs.\ homo and vs.\ MP.}
+\label{tab:full4x4}
+\begin{tabular}{lrrr}
+\toprule
+Method & Final ATT & $\Delta$ vs.\ homo & $\Delta$ vs.\ MP \\
+\midrule
+MaxPressure & 237.5 & $+64.3$ & $0$ \\
+PressLight  & 248.0 & $+73.6$ & $+10.5$ \\
+FixedTime   & 271.0 & $+51.9$ & $+33.5$ \\
+DQN         & 282.8 & $+114.9$ & $+45.3$ \\
+CoLight     & 494.6 & $+321.5$ & $+257.1$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Demand Realism}
+
+The OD-hub demand set tests whether the leaderboard survives generalization stress alone or only under compound stress (Table~\ref{tab:odh4x4}). Under demand-only conditions, the RL agents tie MaxPressure: DQN 156.9\,s, MaxPressure 157.2\,s, CoLight 157.5\,s. Under demand plus \realismfull, MaxPressure is the anchor at 186.9\,s, PressLight close behind at 190.9\,s, but DQN inflates to 245.3\,s and CoLight to 436.4\,s. The L2$-$L1 deltas quantify realism fragility: MaxPressure +29.7\,s, PressLight +27.5\,s, DQN +88.4\,s, CoLight +278.9\,s. Demand realism alone does not separate the methods, but composing it with plant and sensor stress breaks learned controllers far more than classical pressure control.
+
+\begin{table}[t]
+\centering
+\caption{OD-hub held-out ATT on \texttt{sumo4x4} (seed~42).}
+\label{tab:odh4x4}
+\begin{tabular}{lrrr}
+\toprule
+Method & L1 & L2 & $\Delta$ (L2$-$L1) \\
+\midrule
+MaxPressure & 157.2 & 186.9 & $+29.7$ \\
+PressLight  & 163.4 & 190.9 & $+27.5$ \\
+FixedTime   & 186.6 & 192.2 & $+5.6$ \\
+DQN         & 156.9 & 245.3 & $+88.4$ \\
+CoLight     & 157.5 & 436.4 & $+278.9$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Cross-Network Ranking Analysis}
+
+Comparing the two networks on rankings rather than ATT (Table~\ref{tab:crossnet}), the leaderboards do not hold across topology. On the 4$\times$4 grid under homo conditions, multiple RL agents sit at or below MaxPressure. Under compound realism, MaxPressure is the anchor and only pressure-aligned PressLight stays near it. On the Ingolstadt arterial under baseline early-stop conditions, PressLight (203.2\,s) approximates MaxPressure (209.1\,s), with DQN competitive (236.5\,s) and CoLight lagging (272.5\,s). The ranking shifts are substantial: PressLight moves from rank 4 on the 4$\times$4 to rank 1 on the arterial, while CoLight moves from rank 1 to rank 5. No single leaderboard generalizes.
+
+\begin{table}[t]
+\centering
+\caption{Cross-network ranking comparison (homo baselines). Rank 1 = best.}
+\label{tab:crossnet}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrrrr}
+\toprule
+Method & 4$\times$4 ATT & 4$\times$4 rank & 1$\times$21 ATT & 1$\times$21 rank \\
+\midrule
+CoLight     & 169.8 & 1 & 272.5 & 5 \\
+DQN         & 169.9 & 2 & 236.5 & 3 \\
+MaxPressure & 171.9 & 3 & 209.1 & 2 \\
+PressLight  & 174.9 & 4 & 203.2 & 1 \\
+FixedTime   & 218.4 & 5 & 248.9 & 4 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Trip-Level Distributions}
+
+On the homo 4$\times$4 grid, per-trip travel times are right-skewed: FixedTime has a mean of 219.7\,s versus a median of 210\,s, while MaxPressure and DQN are nearly symmetric around 172\,s. The 95th percentile separates MaxPressure and DQN (roughly 280\,s) from FixedTime (380\,s). An idle-share fraction, computed as idle time divided by trip time per vehicle, separates the controllers mechanistically: median idle share is approximately 0.05 for MaxPressure and DQN versus 0.22 for FixedTime. These trip-level metrics were explored but not incorporated into the benchmarking itself; whether they become secondary metrics remains an open question.
+
+% ==============================================================================
+\section{Discussion}
+% ==============================================================================
+
+\textbf{Does max-pressure fail under realism?} In our composed profiles, no. MaxPressure remains competitive or best among the tested set across both networks and across single-axis, compound, and demand-realism conditions. RL wins on idealized grids are often a few seconds; realism shifts are tens to hundreds of seconds. When RL beats MaxPressure, the margin is frequently smaller than the uncertainty induced by seed, early-stopping, or axis toggles, consistent with broader RL evaluation critiques~\cite{henderson2018matters, agarwal2021rliable}.
+
+\textbf{Why do papers claim otherwise?} Common arguments hold that max-pressure is greedy, assumes unlimited downstream capacity, and cannot learn coordination~\cite{wei2019presslight, wei2019colight, wei2019survey}. Those statements concern model assumptions, not empirical failure under every realistic plant. Our results suggest that once the simulator includes the same detection, fleet, and pedestrian frictions that motivate RL papers, the classical baseline often degrades more gracefully than graph-attention RL trained under those same frictions.
+
+\textbf{Is ranking even the right product?} If changing network or realism profile reorders methods, publishing a single leaderboard on an idealized benchmark is misleading. We recommend reporting axis-wise ATT, compound profiles, held-out demand performance, effect sizes against MaxPressure, and trip-distribution summaries rather than ordinal ranks alone. The question of action interval reinforces this: many RL-TSC stacks decide every 5--10 simulation seconds, so claimed wins of 2--3 seconds of ATT should be interpreted relative to that decision granularity and to measurement noise.
+
+% ==============================================================================
+\section{Limitations}
+% ==============================================================================
+
+Most results use seed 42; multi-seed statistical tests are incomplete~\cite{colas2018seeds}, so the ranking fragility we observe is directional rather than statistically powered. The crossing proxy is an actuated phase approximation, not full multimodal pedestrian simulation. The OD-hub demand is synthetic hub gravity, not city-calibrated LODES data, so absolute demand levels are illustrative rather than transferable to a specific deployment.
+
+% ==============================================================================
+\section{Conclusion}
+% ==============================================================================
+
+We proposed a realism-composed benchmarking protocol for traffic signal control: five toggleable realism axes covering plant and sensor stress, a demand-realism layer with held-out evaluation, and compound profiles on a corrected LibSignal/SUMO stack. Empirically, introducing realism does not preferentially invalidate max-pressure in favor of RL. Rankings are fragile across topology and realism profile, effect sizes are often small relative to the ATT uplift realism itself introduces, and compound stress can collapse sophisticated RL agents while classical pressure control remains an anchor. This work attempts to fill the sim-to-real gap in TSC evaluation by introducing this compositional protocol and the empirical evidence it enables, and we advocate reporting realism profiles, held-out demand, and effect sizes rather than leaderboard ranks on idealized scenarios.
+
+% ==============================================================================
+\section*{Reproducibility}
+% ==============================================================================
+
+Code and configs are in the repository. Axis documentation and demand generation scripts are provided. Analysis notebooks under \texttt{result\_analysis/*.ipynb} are read-only. Output data backing the reported numbers is under \texttt{data/output\_data/tsc/}.
+
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}

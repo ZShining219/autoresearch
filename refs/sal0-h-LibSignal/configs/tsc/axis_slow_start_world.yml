@@ -1,0 +1,4 @@
+# L2 single-axis: slow-start discharge only.
+# Overrides pkw via slowStartAdditional (works on hub-OD pkw routes).
+world:
+  slow_start: true

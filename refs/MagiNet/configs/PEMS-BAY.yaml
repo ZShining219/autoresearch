@@ -1,0 +1,24 @@
+data:
+  dataset: "PEMS-BAY"
+  miss_mechanism: "MCAR"
+  miss_ratio: 0.5
+  batch_size: 16
+  test_batch_size: 16
+  val_batch_size: 16
+
+model:
+  num_nodes: 325
+  hidden_size: 32
+  in_channel: 1
+  seqlen: 12
+  st_block: 3
+  K: 3
+  d_model: 512
+  n_heads: 3
+
+train:
+  cuda: 2
+  lr: 1e-3
+  epochs: 150
+  save_model_path: save_model/
+  result_path: results/

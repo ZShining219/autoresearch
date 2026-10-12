@@ -2,9 +2,6 @@ __pycache__/
 *.pyc
 *.egg-info/
 
-# 外部引用仓库（各自带 .git，单独克隆管理）
-refs/
-
 # 生成数据与实验产物（可复现，不入库）
 data/
 results/
@@ -14,6 +11,16 @@ nets/gen*/
 *.pt
 *.npz
 *.h5
+
+# 引用仓内部的重型目录：上游可重新下载的数据集/实验产物
+refs/sal0-h-LibSignal/data/raw_data/
+refs/sal0-h-LibSignal/data/output_data/
+refs/LibSignal/data/raw_data/
+refs/*/records/
+refs/*/model/
+refs/*/logs/
+refs/*/runs/
+refs/*/errors/
 
 # 系统/编辑器
 .DS_Store

@@ -1,0 +1,5 @@
+# L2 single-axis: additive Gaussian count noise only.
+# Same sigma as realism_full_world.yml.
+world:
+  obs_count_noise_std: 2.0
+  obs_noise_mode: additive

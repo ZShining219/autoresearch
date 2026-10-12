@@ -1,0 +1,642 @@
+\documentclass[11pt,a4paper]{article}
+
+% ── Packages ──────────────────────────────────────────────────────
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{tcolorbox}
+\usepackage{amsmath}
+
+% ── Colour definitions ───────────────────────────────────────────
+\definecolor{codegreen}{rgb}{0.13,0.55,0.13}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.95}
+\definecolor{warnred}{rgb}{0.8,0.1,0.1}
+
+% ── Listings style ───────────────────────────────────────────────
+\lstdefinestyle{code}{
+    backgroundcolor=\color{backcolour},
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{codepurple}\bfseries,
+    stringstyle=\color{codegreen},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=2,
+    frame=single,
+    rulecolor=\color{codegray},
+}
+\lstset{style=code}
+
+% ── tcolorbox styles ─────────────────────────────────────────────
+\newtcolorbox{warningbox}{colback=red!5!white, colframe=red!75!black,
+  title={\textbf{Warning}}, fonttitle=\bfseries}
+
+\newtcolorbox{infobox}{colback=blue!5!white, colframe=blue!60!black,
+  title={\textbf{Info}}, fonttitle=\bfseries}
+
+\newtcolorbox{tipbox}{colback=green!5!white, colframe=green!60!black,
+  title={\textbf{Tip}}, fonttitle=\bfseries}
+
+% ── Header / Footer ─────────────────────────────────────────────
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{Collective Intelligence Project}
+\lhead{LibSignal Team Instructions}
+\cfoot{\thepage}
+
+% ── Document ─────────────────────────────────────────────────────
+\begin{document}
+
+% ═══════════════════════════════════════════════════════════════════
+\begin{titlepage}
+\centering
+\vspace*{3cm}
+{\Huge\bfseries LibSignal Research\\[0.4cm] Team Instructions\par}
+\vspace{1.5cm}
+{\Large Collective Intelligence Project\par}
+\vspace{1cm}
+{\large Salman $\cdot$ Rashid $\cdot$ Madina\par}
+\vspace{2cm}
+{\large \today\par}
+\vfill
+{\normalsize
+Repository: \url{https://github.com/sal0-h/LibSignal}\\[0.3cm]
+Framework: LibSignal --- Reinforcement Learning for Traffic Signal Control}
+\end{titlepage}
+
+% ═══════════════════════════════════════════════════════════════════
+\tableofcontents
+\newpage
+
+% ═══════════════════════════════════════════════════════════════════
+\section{Overview}
+
+LibSignal is an open-source reinforcement learning framework for \textbf{Traffic Signal Control (TSC)}.
+It wraps traffic simulators (SUMO, CityFlow) behind a unified interface so that different RL agents can be trained and evaluated on various road networks without rewriting glue code.
+
+This repository continues the original \href{https://github.com/DaRL-LibSignal/LibSignal}{DaRL-LibSignal/LibSignal} project with Python~3.11+ compatibility, setup improvements, and realistic SUMO physics. The upstream project is no longer actively maintained; use this repository for all team work.
+
+\subsection{Key Concepts}
+\begin{description}[leftmargin=3cm, style=nextline]
+    \item[Agent] The RL policy (e.g.\ DQN, PressLight, CoLight, MPLight).
+    \item[World] The simulator backend (we use \textbf{SUMO}).
+    \item[Network] The road topology and traffic demand (e.g.\ \texttt{sumo1x1}, \texttt{grid4x4}).
+    \item[Episode] One full simulation run (default 3600\,s = 1 hour of simulated traffic).
+    \item[Action Interval] How often the agent makes a decision (default every 10\,s).
+\end{description}
+
+% ═══════════════════════════════════════════════════════════════════
+\section{Google Colab Setup}
+
+All experiments run on Google Colab.  Each team member has a \textbf{personal output folder} on Google Drive so that checkpoints and logs are never lost when Colab disconnects.
+
+\subsection{Step 1: Open the Notebook}
+
+Open the shared Colab notebook.  The first cell is the \textbf{Setup Cell}.
+
+\subsection{Step 2: Change Your Name}
+
+At the top of the setup cell, change \texttt{MEMBER\_NAME} to your name:
+
+\begin{lstlisting}[language=Python]
+MEMBER_NAME = "salman"   # Options: "salman", "rashid", "madina"
+\end{lstlisting}
+
+This determines your personal save folder on Google Drive:
+\begin{center}
+\texttt{Collective Intelligence Project/colab\_\textit{<name>}/output\_data/}
+\end{center}
+
+\subsection{Step 3: Run the Setup Cell}
+
+Click the play button.  The cell will:
+\begin{enumerate}
+    \item Mount Google Drive.
+    \item Create your personal output folder (if it doesn't exist).
+    \item Install SUMO (first run only, takes $\sim$2 minutes).
+    \item Clone or update LibSignal.
+    \item Install Python dependencies.
+    \item Create a \textbf{symlink} from the local \texttt{data/output\_data} directory to your Drive folder, so all logs and model checkpoints are automatically saved to the cloud.
+\end{enumerate}
+
+\begin{warningbox}
+You \textbf{must} run the setup cell every time you open a new Colab session.
+Colab resets the virtual machine when the session ends, so the symlink and SUMO installation are lost.
+\end{warningbox}
+
+\subsection{Where Do Outputs Go?}
+
+When you run an experiment, outputs are saved to:
+\begin{center}
+\texttt{data/output\_data/tsc/\{world\}\_\{agent\}/\{network\}/\{prefix\}/}
+\end{center}
+
+Because of the symlink, this maps directly to your Google Drive:
+\begin{center}
+\texttt{Drive/.../colab\_\textit{<name>}/output\_data/tsc/sumo\_presslight/grid4x4/test/}
+\end{center}
+
+Inside that folder you will find:
+\begin{itemize}
+    \item \texttt{logger/} --- training logs (one \texttt{.log} file per run).
+    \item \texttt{model/} --- saved model checkpoints (\texttt{.pt} files, saved every 5 episodes by default).
+\end{itemize}
+
+% ═══════════════════════════════════════════════════════════════════
+\section{Running Experiments}
+
+There are two ways to run experiments.
+
+% ── Option 1 ─────────────────────────────────────────────────────
+\subsection{Option 1: Edit the Config File Directly (Recommended)}
+
+This is the most reliable method.
+
+\begin{enumerate}
+    \item Open the Colab \textbf{file explorer} (folder icon on the left sidebar).
+    \item Navigate to \texttt{LibSignal/configs/tsc/}.
+    \item Open the YAML file for your agent (e.g.\ \texttt{presslight.yml}).
+    \item Edit the hyperparameters to match the values from the paper.
+    \item Save the file (\texttt{Ctrl+S}).
+    \item Run the experiment cell:
+\end{enumerate}
+
+\begin{lstlisting}[language=bash]
+!cd /content/LibSignal && python run.py \
+    --task tsc \
+    --agent presslight \
+    --world sumo \
+    --network grid4x4 \
+    --prefix my_experiment_name \
+    --dataset onfly
+\end{lstlisting}
+
+% ── Option 2 ─────────────────────────────────────────────────────
+\subsection{Option 2: Smart Config Injector Cell}
+
+The notebook includes a ``Smart Config Injector'' cell that programmatically modifies the YAML config before each run and restores it afterwards.  Edit the \texttt{OVERRIDES} dictionary in that cell.
+
+\begin{lstlisting}[language=Python]
+OVERRIDES = {
+    "model": {
+        "learning_rate": 0.001,
+        "batch_size": 64,
+        "epsilon": 0.1,
+        "epsilon_decay": 0.995,
+    },
+    "trainer": {
+        "episodes": 200,
+        "test_steps": 3600,
+        "buffer_size": 10000,
+    }
+}
+\end{lstlisting}
+
+\begin{tipbox}
+Use the \texttt{PREFIX} variable to give each run a unique name.
+This prevents experiments from overwriting each other.
+Example: \texttt{PREFIX = "lr001\_eps01\_bs64"}.
+\end{tipbox}
+
+% ═══════════════════════════════════════════════════════════════════
+\section{Command-Line Arguments Reference}
+
+All arguments are passed to \texttt{run.py}:
+
+\begin{center}
+\begin{longtable}{llp{7cm}}
+\toprule
+\textbf{Flag} & \textbf{Default} & \textbf{Description} \\
+\midrule
+\endhead
+\texttt{-{}-task} / \texttt{-t}       & \texttt{tsc}       & Task type. Always \texttt{tsc} for us. \\
+\texttt{-{}-agent} / \texttt{-a}      & \texttt{dqn}       & Agent name (must match a YAML file in \texttt{configs/tsc/}). \\
+\texttt{-{}-world} / \texttt{-w}      & \texttt{cityflow}  & Simulator. Use \texttt{sumo}. \\
+\texttt{-{}-network} / \texttt{-n}    & \texttt{cityflow1x1} & Network config name (see Section~\ref{sec:networks}). \\
+\texttt{-{}-dataset} / \texttt{-d}    & \texttt{onfly}     & Dataset type. Always \texttt{onfly}. \\
+\texttt{-{}-prefix}                    & \texttt{test}      & Output subfolder name. \textbf{Use this to tag experiments.} \\
+\texttt{-{}-seed}                      & \texttt{None}      & Random seed for reproducibility. \\
+\texttt{-{}-ngpu}                      & \texttt{-1}        & GPU id (\texttt{-1} = CPU, \texttt{0} = first GPU). \\
+\texttt{-{}-interface}                 & \texttt{libsumo}   & \texttt{libsumo} (fast) or \texttt{traci} (slow, supports GUI). \\
+\texttt{-{}-delay\_type}              & \texttt{apx}       & \texttt{apx} (approximate) or \texttt{real} delay calculation. \\
+\bottomrule
+\end{longtable}
+\end{center}
+
+\begin{warningbox}
+Hyperparameters like \texttt{learning\_rate}, \texttt{epsilon}, \texttt{batch\_size}, \texttt{episodes}, etc.\ \textbf{cannot} be set from the command line.
+They must be set in the YAML config files or injected programmatically.
+\end{warningbox}
+
+% ═══════════════════════════════════════════════════════════════════
+\section{Available Agents}
+
+\begin{center}
+\begin{longtable}{lll}
+\toprule
+\textbf{Agent Name} & \textbf{Config File} & \textbf{Type} \\
+\midrule
+\endhead
+\texttt{maxpressure}  & \texttt{maxpressure.yml}  & Heuristic baseline (no learning) \\
+\texttt{fixedtime}    & \texttt{fixedtime.yml}    & Fixed-time baseline (no learning) \\
+\texttt{sotl}         & \texttt{sotl.yml}         & Self-Organizing Traffic Light \\
+\texttt{dqn}          & \texttt{dqn.yml}          & Deep Q-Network \\
+\texttt{presslight}   & \texttt{presslight.yml}   & PressLight (pressure-based DQN) \\
+\texttt{mplight}      & \texttt{mplight.yml}      & MPLight (FRAP-based, pressure) \\
+\texttt{colight}      & \texttt{colight.yml}      & CoLight (graph attention network) \\
+\texttt{ppo}          & \texttt{ppo.yml}          & Proximal Policy Optimization \\
+\texttt{frap}         & \texttt{frap.yml}         & FRAP \\
+\texttt{maddpg}       & \texttt{maddpg.yml}       & Multi-Agent DDPG \\
+\bottomrule
+\end{longtable}
+\end{center}
+
+% ═══════════════════════════════════════════════════════════════════
+\section{Available SUMO Networks}
+\label{sec:networks}
+
+These are the \texttt{-{}-network} values you can use with \texttt{-{}-world sumo}:
+
+\begin{center}
+\begin{longtable}{lp{8cm}}
+\toprule
+\textbf{Network Name} & \textbf{Description} \\
+\midrule
+\endhead
+\texttt{sumo1x1}          & Synthetic single intersection \\
+\texttt{sumo1x3}          & Synthetic 1$\times$3 arterial \\
+\texttt{sumo4x4}          & Synthetic 4$\times$4 grid \\
+\texttt{sumo1x21}         & Synthetic 1$\times$21 arterial \\
+\texttt{sumo7x28}         & Large 7$\times$28 grid \\
+\texttt{sumohz1x1}        & Real-world Hangzhou single intersection \\
+\texttt{sumohz4x4}        & Real-world Hangzhou 4$\times$4 grid \\
+\texttt{grid4x4}          & Alias for synthetic 4$\times$4 grid (CityFlow-style name) \\
+\texttt{cologne1}         & Real-world Cologne single intersection \\
+\texttt{cologne3}         & Real-world Cologne 1$\times$3 corridor \\
+\bottomrule
+\end{longtable}
+\end{center}
+
+\begin{infobox}
+For multi-intersection agents like \textbf{CoLight} and \textbf{MPLight}, use multi-intersection networks
+(\texttt{grid4x4}, \texttt{sumo4x4}, \texttt{cologne3}, etc.).
+Single-intersection networks work best for \texttt{dqn}, \texttt{presslight}, \texttt{ppo}, etc.
+\end{infobox}
+
+% ═══════════════════════════════════════════════════════════════════
+\section{Configuration (YAML) Reference}
+
+Each agent has a YAML file in \texttt{configs/tsc/} that \texttt{includes} the base config.
+Agent-specific parameters override the base defaults.
+The inheritance chain is:
+
+\begin{center}
+\texttt{configs/tsc/base.yml} $\longrightarrow$ \texttt{configs/tsc/<agent>.yml}
+\end{center}
+
+\subsection{Key Trainer Parameters}
+
+\begin{center}
+\begin{longtable}{llp{7cm}}
+\toprule
+\textbf{Parameter} & \textbf{Default} & \textbf{Description} \\
+\midrule
+\endhead
+\texttt{episodes}          & 200   & Number of training episodes. \\
+\texttt{steps}             & 3600  & Simulation steps per training episode (seconds). \\
+\texttt{test\_steps}       & 3600  & Simulation steps per test episode. \\
+\texttt{action\_interval}  & 10    & Agent makes a decision every $N$ seconds. \\
+\texttt{yellow\_length}    & 5     & Yellow phase duration (seconds). \\
+\texttt{learning\_start}   & 5000  & Steps before learning begins (replay buffer warm-up). \\
+\texttt{buffer\_size}      & 5000  & Replay buffer capacity. \\
+\texttt{update\_model\_rate}  & 1  & Update model every $N$ episodes. \\
+\texttt{update\_target\_rate} & 10 & Update target network every $N$ episodes. \\
+\texttt{test\_when\_train}  & True & Run a test episode after each training episode. \\
+\bottomrule
+\end{longtable}
+\end{center}
+
+\subsection{Key Model (Agent) Parameters}
+
+\begin{center}
+\begin{longtable}{llp{7cm}}
+\toprule
+\textbf{Parameter} & \textbf{Default} & \textbf{Description} \\
+\midrule
+\endhead
+\texttt{learning\_rate}   & 0.001 & Optimizer learning rate. \\
+\texttt{batch\_size}      & 64    & Mini-batch size for training. \\
+\texttt{gamma}            & 0.95  & Discount factor $\gamma$. \\
+\texttt{epsilon}          & 0.5   & Initial exploration rate $\varepsilon$. \\
+\texttt{epsilon\_decay}   & 0.99  & Multiplicative decay per episode. \\
+\texttt{epsilon\_min}     & 0.05  & Minimum $\varepsilon$. \\
+\texttt{grad\_clip}       & 5.0   & Gradient clipping threshold. \\
+\texttt{train\_model}     & False & Set to \texttt{True} to enable training. \\
+\texttt{load\_model}      & False & Load a previously saved checkpoint. \\
+\bottomrule
+\end{longtable}
+\end{center}
+
+\subsection{Logger Parameters}
+
+\begin{center}
+\begin{longtable}{llp{7cm}}
+\toprule
+\textbf{Parameter} & \textbf{Default} & \textbf{Description} \\
+\midrule
+\endhead
+\texttt{save\_rate}  & 5    & Save model checkpoint every $N$ episodes. \\
+\texttt{save\_model} & True & Whether to save checkpoints at all. \\
+\bottomrule
+\end{longtable}
+\end{center}
+
+% ═══════════════════════════════════════════════════════════════════
+\section{Team Member Assignments}
+
+Check the Google Doc.
+
+Each member should use the \texttt{PREFIX} flag to separate different runs:
+\begin{lstlisting}[language=bash]
+--prefix run1_lr001_eps01
+--prefix run2_lr0001_eps08
+--prefix final_200ep
+\end{lstlisting}
+
+% ═══════════════════════════════════════════════════════════════════
+\section{Verifying a Run}
+
+\begin{enumerate}
+    \item Run the setup cell.
+    \item Start a training run.
+    \item Wait $\sim$2 minutes for the first episode to finish.
+    \item Open Google Drive in a new tab.
+    \item Navigate to: \texttt{Collective Intelligence Project} $\to$ \texttt{colab\_\textit{<name>}} $\to$ \texttt{output\_data}.
+    \item You should see a folder tree like:
+\begin{lstlisting}[language=bash]
+output_data/
+  tsc/
+    sumo_presslight/
+      grid4x4/
+        test/             # <-- your PREFIX
+          logger/
+            2026_02_10-16_39_57_BRF.log
+          model/
+            5_0.pt        # checkpoint at episode 5
+            10_0.pt       # checkpoint at episode 10
+            ...
+\end{lstlisting}
+    \item If you see the \texttt{model/} folder appearing, your setup is working correctly.
+\end{enumerate}
+
+% ═══════════════════════════════════════════════════════════════════
+\section{Lab Server Setup (Alternative to Colab)}
+\label{sec:server}
+
+Instead of Google Colab you can run experiments directly on the lab server.
+Each team member works from \textbf{their own clone} of the repository under their own home directory.
+There is no shared directory.
+
+% ── Step 1 ───────────────────────────────────────────────────────
+\subsection{Step 1: Log In}
+
+Open a terminal and SSH in with the username and password Salman sent you on WhatsApp:
+
+\begin{lstlisting}[language=bash]
+ssh rashid@<server-address>
+# enter the password when prompted
+\end{lstlisting}
+
+\begin{warningbox}
+Change your password immediately after first login:
+\begin{lstlisting}[language=bash]
+passwd
+\end{lstlisting}
+Enter the old password, then choose a new one.
+\end{warningbox}
+
+% ── Step 2 ───────────────────────────────────────────────────────
+\subsection{Step 2: Clone the Repository}
+
+Clone your own copy of the repo into your home directory:
+
+\begin{lstlisting}[language=bash]
+git clone https://github.com/sal0-h/LibSignal.git ~/LibSignal
+cd ~/LibSignal
+\end{lstlisting}
+
+% ── Step 3 ───────────────────────────────────────────────────────
+\subsection{Step 3: Run the Setup Script}
+
+Run the setup script with the \texttt{--no-sudo} flag.
+This installs Miniconda (if needed), creates the \texttt{traffic} conda environment, installs PyTorch, SUMO, and all Python dependencies.
+
+\begin{lstlisting}[language=bash]
+chmod +x setup.sh
+./setup.sh --no-sudo
+\end{lstlisting}
+
+The \texttt{--no-sudo} flag causes the script to skip any privileged system-package steps.
+The administrator has already installed the required system libraries, so the script will complete successfully without root access.
+
+\begin{infobox}
+You only need to run the setup script \textbf{once} after cloning.
+The environment persists across logins --- unlike Colab, nothing is reset when you log out.
+\end{infobox}
+
+% ── Step 4 ───────────────────────────────────────────────────────
+\subsection{Step 4: Activate the Environment}
+
+Every new terminal session, activate the conda environment before running anything:
+
+\begin{lstlisting}[language=bash]
+conda activate traffic
+\end{lstlisting}
+
+Verify it is working:
+
+\begin{lstlisting}[language=bash]
+which python       # should point to .../envs/traffic/bin/python
+python -V          # Python 3.10.x
+\end{lstlisting}
+
+% ── Step 5 ───────────────────────────────────────────────────────
+\subsection{Step 5: Run Experiments}
+
+Experiments are run exactly the same way as on Colab, just without the \texttt{!} prefix:
+
+\begin{lstlisting}[language=bash]
+cd ~/LibSignal
+python run.py \
+    --task tsc \
+    --agent presslight \
+    --world sumo \
+    --network sumo4x4 \
+    --prefix rashid_run1 \
+    --dataset onfly
+\end{lstlisting}
+
+Outputs are saved under your clone at:
+
+\begin{center}
+\texttt{\textasciitilde/LibSignal/data/output\_data/tsc/sumo\_\{agent\}/\{network\}/\{prefix\}/}
+\end{center}
+
+There is no symlink to Google Drive; results stay on the server.
+Use \texttt{git add / commit / push} to share results with the team.
+
+% ── Step 6 ───────────────────────────────────────────────────────
+\subsection{Step 6: Keep Experiments Running After Logout}
+
+Unlike Colab, the server does not kill your process when you disconnect.
+Use \texttt{nohup} or \texttt{tmux} so training continues in the background:
+
+\begin{lstlisting}[language=bash]
+# option A: nohup (simplest)
+nohup python run.py --task tsc --agent colight \
+      --world sumo --network sumo4x4 \
+      --prefix rashid_colight1 --dataset onfly \
+      > run.log 2>&1 &
+
+# then check progress at any time with:
+tail -f run.log
+
+# option B: tmux (recommended: you can re-attach the session)
+tmux new -s train
+python run.py ...      # start the run inside tmux
+# detach: Ctrl+B then D
+# re-attach later:
+tmux attach -t train
+\end{lstlisting}
+
+% ── Step 7 ───────────────────────────────────────────────────────
+\subsection{Step 7: Commit and Share Results}
+
+After a run finishes, commit the output data (model weights are excluded by \texttt{.gitignore};
+only logs and CSVs are committed):
+
+\begin{lstlisting}[language=bash]
+cd ~/LibSignal
+git add data/output_data/
+git commit -m "rashid: presslight sumo4x4 run1 results"
+git push
+\end{lstlisting}
+
+% ── Verification checklist ────────────────────────────────────────
+\subsection{Quick Verification Checklist}
+
+\begin{enumerate}
+    \item You can SSH in and \texttt{passwd} has been changed.
+    \item \texttt{./setup.sh --no-sudo} completed with no errors.
+    \item \texttt{conda activate traffic} works.
+    \item A short test run completes:
+\begin{lstlisting}[language=bash]
+python run.py --task tsc --agent maxpressure \
+    --world sumo --network sumo1x1 --dataset onfly --prefix test
+\end{lstlisting}
+    \item You see output in \texttt{data/output\_data/tsc/sumo\_maxpressure/sumo1x1/test/}.
+\end{enumerate}
+
+% ── Gotchas ──────────────────────────────────────────────────────
+\subsection{Gotchas}
+
+\begin{itemize}
+    \item \textbf{Do not} run experiments with \texttt{sudo} --- the conda environment does not live under root.
+    \item \textbf{Do not} delete \texttt{\textasciitilde/miniconda3} or \texttt{\textasciitilde/.conda} unless you intend to redo the full setup.
+    \item If you see \texttt{SUMO\_HOME not set}, the conda env was activated \emph{after} the setup script wrote the activation hook.  Run \texttt{conda deactivate \&\& conda activate traffic} to reload it.
+    \item Model weight files (\texttt{*.pt}) are in \texttt{.gitignore} and will not be pushed.  Only logs and metric CSVs are committed.
+    \item Always use a unique \texttt{--prefix} per run to avoid overwriting previous results.
+\end{itemize}
+
+% ═══════════════════════════════════════════════════════════════════
+\section{Important Warnings}
+
+\begin{warningbox}
+\textbf{Colab will disconnect if you close the tab.}
+There is no way around this.  Keep the tab open and prevent your computer from sleeping.
+\end{warningbox}
+
+\subsection{Anti-Disconnect Hack}
+
+To prevent Colab from disconnecting due to idle timeout (even while training is running), open the browser console (\texttt{Ctrl+Shift+I} $\to$ Console tab) and paste:
+
+\begin{lstlisting}[language=Java]
+function ClickConnect(){
+    console.log("Keeping Colab alive...");
+    document.querySelector("colab-toolbar-button#connect").click()
+}
+setInterval(ClickConnect, 60000)
+\end{lstlisting}
+
+This clicks the ``Connect'' button every 60 seconds to prevent idle disconnection.
+
+\subsection{Other Gotchas}
+
+\begin{itemize}
+    \item \textbf{Do not} run \texttt{git pull} in the Colab repo directory if you have manually edited config files---it will overwrite your changes. Use the Smart Config Injector instead, which restores the original config after each run.
+    \item \textbf{Do not} change \texttt{world.dir} in \texttt{base.yml}. It must remain \texttt{data/} for the output symlink to work.
+    \item Colab free tier has a \textbf{$\sim$12 hour} session limit. For 200 episodes on a 4$\times$4 grid, this should be enough, but monitor your progress.
+    \item If you see \texttt{SUMO\_HOME} errors, the setup cell didn't run. Re-run it.
+\end{itemize}
+
+% ═══════════════════════════════════════════════════════════════════
+\section{Output Metrics}
+
+The training log prints the following metrics each episode:
+
+\begin{center}
+\begin{longtable}{lp{9cm}}
+\toprule
+\textbf{Metric} & \textbf{Meaning} \\
+\midrule
+\endhead
+\texttt{q\_loss}        & The Q-network loss (should decrease over training). \\
+\texttt{rewards}        & Average reward per step (higher is better). \\
+\texttt{queue}          & Average queue length at intersections (lower is better). \\
+\texttt{delay}          & Average vehicle delay (lower is better). \\
+\texttt{throughput}     & Number of vehicles that completed their trip (higher is better). \\
+\texttt{real avg travel time} & Mean travel time of all vehicles (lower is better). This is the \textbf{primary metric} for comparison. \\
+\bottomrule
+\end{longtable}
+\end{center}
+
+% ═══════════════════════════════════════════════════════════════════
+\section{Quick Reference Card}
+
+\begin{tcolorbox}[colback=gray!5!white, colframe=gray!75!black, title=\textbf{Cheat Sheet}]
+\begin{lstlisting}[language=bash]
+# Baseline (no learning, instant)
+python run.py -a maxpressure -w sumo -n sumo1x1 --prefix baseline
+
+# DQN on single intersection
+python run.py -a dqn -w sumo -n sumo1x1 --prefix dqn_run1
+
+# PressLight on 4x4 grid
+python run.py -a presslight -w sumo -n grid4x4 --prefix pl_run1
+
+# CoLight on 4x4 grid
+python run.py -a colight -w sumo -n grid4x4 --prefix col_run1
+
+# MPLight on Cologne corridor
+python run.py -a mplight -w sumo -n cologne3 --prefix mpl_run1
+\end{lstlisting}
+\textbf{All commands assume}: \texttt{-{}-task tsc -{}-dataset onfly}
+\end{tcolorbox}
+
+\end{document}

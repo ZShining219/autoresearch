@@ -1,0 +1,10 @@
+# Level 2: Traffic-R1 with hub OD demand plus the complete realism_full world.
+includes:
+  - configs/tsc/traffic_r1.yml
+  - configs/tsc/realism_full_world.yml
+  - configs/tsc/od_hub_1800_base.yml
+
+# Keep this an inference-only held-out evaluation, matching the Level-2
+# baseline convention in result_analysis/od_hub_benchmark_4x4.ipynb.
+trainer:
+  episodes: 1

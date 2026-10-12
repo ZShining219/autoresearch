@@ -1,0 +1,5 @@
+includes:
+  - configs/tsc/dqn_odh_l2_1x21.yml
+
+model:
+  name: dqn_rich

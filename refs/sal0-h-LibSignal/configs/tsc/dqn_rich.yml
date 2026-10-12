@@ -1,0 +1,5 @@
+includes:
+  - configs/tsc/dqn.yml
+
+model:
+  name: dqn_rich

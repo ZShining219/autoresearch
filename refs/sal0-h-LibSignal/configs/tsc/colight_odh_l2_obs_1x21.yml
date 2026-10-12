@@ -1,0 +1,7 @@
+# Level 2 (Ingolstadt) single-axis ablation: hub OD + obs only.
+# Demand/early-stop from the L1/L2 od_hub base; axis params from
+# configs/tsc/axis_obs_world.yml (same values as realism_full).
+includes:
+  - configs/tsc/colight.yml
+  - configs/tsc/axis_obs_world.yml
+  - configs/tsc/od_hub_1x21_1800_base.yml

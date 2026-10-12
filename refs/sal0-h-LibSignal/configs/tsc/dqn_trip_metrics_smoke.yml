@@ -1,0 +1,14 @@
+includes:
+  - configs/tsc/dqn.yml
+
+# Short DQN run to verify final + best trip-metrics export.
+trainer:
+  episodes: 3
+  steps: 600
+  test_steps: 600
+  learning_start: 100
+  buffer_size: 500
+  test_when_train: True
+
+logger:
+  save_rate: 1

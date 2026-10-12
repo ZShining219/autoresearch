@@ -1,0 +1,5 @@
+includes:
+  - configs/tsc/presslight.yml
+
+world:
+  crossing_proxy: true

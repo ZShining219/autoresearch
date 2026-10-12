@@ -1,0 +1,589 @@
+#!/usr/bin/env python
+"""Tests for pyepo.metric: MSE, regret, unambiguous regret, SPOError, scorers.
+
+Per-sample helpers (calRegret, calUnambRegret, SPOError) are checked
+for the invariants that matter: perfect prediction => zero, regret >= 0 for both
+senses, and unambiguous regret >= standard regret. The dataloader-level
+regret() / unambRegret() / MSE() are run on a tiny untrained predictor to verify
+they return sane floats. MSE needs no solver. Numpy-level input validation of
+``pyepo.metric._common`` lives in test_61; dataloader-level torch validation
+stays here.
+"""
+
+import importlib
+from types import SimpleNamespace
+
+import numpy as np
+import pytest
+import torch
+from torch import nn
+from torch.utils.data import DataLoader, TensorDataset
+
+from pyepo.metric.metrics import SPOError, makeSkScorer
+from pyepo.metric.mse import MSE
+from pyepo.metric.regret import calRegret, regret
+from pyepo.metric.unambregret import calUnambRegret, unambRegret
+
+from .conftest import (
+    _HAS_FLAX,
+    _HAS_GUROBI,
+    NUM_FEAT,
+    LinearPred,
+    requires_gurobi,
+    requires_mpax,
+)
+
+
+class _IdentityModel(nn.Module):
+    """Prediction model that returns its input unchanged."""
+
+    def __init__(self):
+        super().__init__()
+        self.dummy = nn.Parameter(torch.tensor(0.0))
+
+    def forward(self, x):
+        return x
+
+
+class _NoParamModel(nn.Module):
+    """Parameterless predictor that returns its input unchanged."""
+
+    def forward(self, x):
+        return x
+
+
+class _FailingModel(nn.Module):
+    """Predictor used to verify evaluation cleanup after an exception."""
+
+    def forward(self, x):
+        raise RuntimeError("prediction failed")
+
+
+class _WrongWidthModel(nn.Module):
+    """Predictor that drops one cost from every sample."""
+
+    def forward(self, x):
+        return x[:, :-1]
+
+
+class _NonfiniteModel(nn.Module):
+    """Predictor that returns a non-finite cost."""
+
+    def forward(self, x):
+        output = x.clone()
+        output[0, 0] = torch.nan
+        return output
+
+
+def _loader(n=16, d=4, batch_size=8):
+    ds = TensorDataset(torch.randn(n, d), torch.randn(n, d), torch.randn(n, d), torch.randn(n, 1))
+    return DataLoader(ds, batch_size=batch_size)
+
+
+def _sp():
+    """3x3 shortest path (MINIMIZE)."""
+    from pyepo.model.grb.shortestpath import shortestPathModel
+
+    return shortestPathModel(grid=(3, 3))
+
+
+def _ks():
+    """3-item knapsack (MAXIMIZE)."""
+    from pyepo.model.grb.knapsack import knapsackModel
+
+    return knapsackModel(weights=np.array([[3.0, 4.0, 5.0]]), capacity=np.array([8.0]))
+
+
+# ============================================================
+# MSE (no solver)
+# ============================================================
+
+
+class TestMSE:
+    """MSE values, mode handling, and edge cases."""
+
+    def test_perfect_prediction_zero(self):
+        d = 4
+        costs = torch.randn(16, d)
+        ds = TensorDataset(costs.clone(), costs, torch.randn(16, d), torch.randn(16, 1))
+        assert abs(MSE(_IdentityModel(), DataLoader(ds, batch_size=8))) < 1e-6
+
+    def test_known_value(self):
+        n, d = 8, 4
+        ds = TensorDataset(
+            torch.ones(n, d), torch.zeros(n, d), torch.randn(n, d), torch.randn(n, 1)
+        )
+        # identity predicts ones, truth zeros => per-element error 1 => MSE 1.0
+        assert abs(MSE(_IdentityModel(), DataLoader(ds, batch_size=n)) - 1.0) < 1e-6
+
+    @pytest.mark.parametrize("training", [True, False])
+    def test_restores_mode(self, training):
+        m = _IdentityModel()
+        m.train(training)
+        MSE(m, _loader())
+        assert m.training is training
+
+    def test_parameterless_model(self):
+        assert MSE(_NoParamModel(), _loader()) >= 0
+
+    @pytest.mark.parametrize("training", [True, False])
+    def test_restores_mode_after_prediction_error(self, training):
+        model = _FailingModel()
+        model.train(training)
+        with pytest.raises(RuntimeError, match="prediction failed"):
+            MSE(model, _loader())
+        assert model.training is training
+
+
+class TestDataloaderPredictionValidation:
+    """Prediction validation before any solver work."""
+
+    optmodel = SimpleNamespace(num_cost=4)
+
+    def test_mse_rejects_wrong_prediction_shape(self):
+        model = _WrongWidthModel()
+        with pytest.raises(ValueError, match="does not match"):
+            MSE(model, _loader())
+        assert model.training
+
+    def test_mse_rejects_nonfinite_prediction(self):
+        with pytest.raises(ValueError, match="finite"):
+            MSE(_NonfiniteModel(), _loader())
+
+    @pytest.mark.parametrize("metric", [regret, unambRegret])
+    def test_regret_metrics_reject_wrong_prediction_width_before_solver(self, metric):
+        model = _WrongWidthModel()
+        with pytest.raises(ValueError, match="does not match"):
+            metric(model, self.optmodel, _loader())
+        assert model.training
+
+    @pytest.mark.parametrize("metric", [regret, unambRegret])
+    def test_regret_metrics_reject_nonfinite_prediction_before_solver(self, metric):
+        with pytest.raises(ValueError, match="finite"):
+            metric(_NonfiniteModel(), self.optmodel, _loader())
+
+    def test_callable_regret_rejects_wrong_prediction_width_before_solver(self, monkeypatch):
+        def predict(x):
+            return np.ones((x.shape[0], 3), dtype=np.float32)
+
+        def fail_pool_creation(*args, **kwargs):
+            pytest.fail("solver pool initialized before prediction validation")
+
+        regret_module = importlib.import_module("pyepo.metric.regret")
+        monkeypatch.setattr(regret_module, "create_solver_pool", fail_pool_creation)
+        with pytest.raises(ValueError, match="does not match"):
+            regret(predict, self.optmodel, _loader())
+
+    @pytest.mark.parametrize("metric", [MSE, regret, unambRegret])
+    def test_rejects_complex_prediction(self, metric):
+        class ComplexModel(nn.Module):
+            def forward(self, x):
+                return x.to(torch.complex64)
+
+        args = (ComplexModel(), _loader())
+        if metric is not MSE:
+            args = (ComplexModel(), self.optmodel, _loader())
+        with pytest.raises(ValueError, match="numerical"):
+            metric(*args)
+
+
+# ============================================================
+# Per-sample regret helpers
+# ============================================================
+
+
+@requires_gurobi
+class TestCalRegret:
+    """Per-sample regret invariants."""
+
+    def test_zero_with_true_cost(self):
+        m = _sp()
+        cost = np.random.RandomState(42).rand(m.num_cost) + 0.1
+        m.setObj(cost)
+        _, true_obj = m.solve()
+        assert abs(calRegret(m, cost, cost, true_obj)) < 1e-6
+
+    def test_non_negative_minimize(self):
+        m = _sp()
+        rng = np.random.RandomState(42)
+        ct, cp = rng.rand(m.num_cost) + 0.1, rng.rand(m.num_cost) + 0.1
+        m.setObj(ct)
+        _, true_obj = m.solve()
+        assert calRegret(m, cp, ct, true_obj) >= -1e-6
+
+    def test_non_negative_maximize(self):
+        m = _ks()
+        rng = np.random.RandomState(42)
+        ct, cp = rng.rand(3) + 1.0, rng.rand(3) + 1.0
+        m.setObj(ct)
+        _, true_obj = m.solve()
+        assert calRegret(m, cp, ct, true_obj) >= -1e-6
+
+    def test_zero_with_objective_constant(self):
+        from pyepo import EPO, dsl
+
+        x = dsl.Variable(2, vtype=EPO.BINARY)
+        c = dsl.Parameter(2)
+        # (x - 1).sum() adds +1 per var to fixed_cost and obj_offset -2
+        m = dsl.Problem(dsl.Minimize(c @ x + (x - 1).sum()), [x.sum() >= 1]).compile(
+            backend="gurobi"
+        )
+        cost = np.array([1.0, 2.0])
+        m.setObj(cost)
+        _, true_obj = m.solve()
+        assert abs(calRegret(m, cost, cost, true_obj)) < 1e-6
+
+    def test_partial_prediction_uses_full_objective(self):
+        # min c x + d y, x + y >= 1; known d = 3, true c = 1, mispredict c_hat = 5
+        from pyepo import dsl
+
+        x = dsl.Variable(1, lb=0, ub=1)
+        y = dsl.Variable(1, lb=0, ub=1)
+        c = dsl.Parameter(1)
+        d = np.array([3.0])
+        m = dsl.Problem(dsl.Minimize(c @ x + d @ y), [x[0] + y[0] >= 1]).compile(backend="gurobi")
+        m.setObj([1.0])  # true cost
+        _, z = m.solve()  # full optimal objective = 1
+        reg = calRegret(m, np.array([5.0]), np.array([1.0]), z)
+        assert reg == pytest.approx(2.0, abs=1e-4)  # full regret (cost-space would give -1)
+
+    def test_rejects_quadratic_objective(self):
+        from pyepo import dsl
+
+        x = dsl.Variable(2, lb=0, ub=1)
+        c = dsl.Parameter(2)
+        m = dsl.Problem(dsl.Minimize(c @ x + (x - 1) @ (x - 1)), [x.sum() >= 0.0]).compile(
+            backend="gurobi"
+        )
+        cost = np.array([1.0, -1.0])
+        with pytest.raises(ValueError):
+            calRegret(m, cost, cost, 0.0)
+        with pytest.raises(ValueError):
+            calUnambRegret(m, cost, cost, 0.0)
+        with pytest.raises(ValueError):
+            SPOError(cost.reshape(1, -1), cost.reshape(1, -1), m)
+        import pyepo
+
+        with pytest.raises(ValueError):
+            pyepo.metric.regret(_IdentityModel(), m, _loader())
+        with pytest.raises(ValueError):
+            pyepo.metric.unambRegret(_IdentityModel(), m, _loader())
+
+
+@requires_gurobi
+class TestSPOError:
+    """Batch SPOError invariants."""
+
+    def test_perfect_prediction_zero(self):
+        m = _sp()
+        costs = np.random.RandomState(42).rand(10, m.num_cost) + 0.1
+        assert abs(SPOError(costs, costs, m)) < 1e-6
+
+    def test_non_negative(self):
+        m = _sp()
+        rng = np.random.RandomState(42)
+        true_c = rng.rand(10, m.num_cost) + 0.1
+        pred_c = rng.rand(10, m.num_cost) + 0.1
+        assert SPOError(pred_c, true_c, m) >= -1e-6
+
+
+@requires_gurobi
+class TestCalUnambRegret:
+    """Per-sample unambiguous-regret invariants."""
+
+    def test_zero_with_true_cost(self):
+        m = _sp()
+        cost = np.random.RandomState(42).rand(m.num_cost) + 0.1
+        m.setObj(cost)
+        _, true_obj = m.solve()
+        assert abs(calUnambRegret(m, cost, cost, true_obj)) < 1e-3
+
+    def test_non_negative(self):
+        m = _sp()
+        rng = np.random.RandomState(42)
+        ct, cp = rng.rand(m.num_cost) + 0.1, rng.rand(m.num_cost) + 0.1
+        m.setObj(ct)
+        _, true_obj = m.solve()
+        assert calUnambRegret(m, cp, ct, true_obj) >= -1e-3
+
+    def test_non_negative_maximize(self):
+        m = _ks()
+        rng = np.random.RandomState(42)
+        ct, cp = rng.rand(m.num_cost) + 1.0, rng.rand(m.num_cost) + 1.0
+        m.setObj(ct)
+        _, true_obj = m.solve()
+        assert calUnambRegret(m, cp, ct, true_obj) >= -1e-3
+
+    def test_at_least_standard_regret(self):
+        m = _sp()
+        rng = np.random.RandomState(7)
+        ct, cp = rng.rand(m.num_cost) + 0.1, rng.rand(m.num_cost) + 0.1
+        m.setObj(ct)
+        _, true_obj = m.solve()
+        std = calRegret(m, cp, ct, true_obj)
+        unamb = calUnambRegret(m, cp, ct, true_obj)
+        assert unamb >= std - 1e-3
+
+    def test_continuous_maximize_fractional_optimum(self):
+        from pyepo import dsl
+
+        x = dsl.Variable(2, lb=0, ub=1)
+        c = dsl.Parameter(2)
+        m = dsl.Problem(dsl.Maximize(c @ x), [np.array([1.0, 3.0]) @ x <= 1.0]).compile("gurobi")
+        # fractional predicted optimum (x2 = 1/3)
+        unamb = calUnambRegret(m, np.array([1.0, 4.0]), np.array([1.0, 1.0]), true_obj=1.0)
+        assert unamb == pytest.approx(2.0 / 3.0, abs=1e-3)
+
+    def test_partial_prediction_scales_fixed_cost(self):
+        from pyepo import dsl
+
+        x = dsl.Variable(1, lb=0, ub=1)
+        y = dsl.Variable(1, lb=0, ub=1)
+        c = dsl.Parameter(1)
+        m = dsl.Problem(
+            dsl.Minimize(c @ x + np.array([5.0]) @ y), [x.sum() + y.sum() >= 1]
+        ).compile("gurobi")
+        # cp = 2 < 5: the tie set is {x}, not the fixed-cost var y
+        unamb = calUnambRegret(m, np.array([2.0]), np.array([3.0]), true_obj=3.0)
+        assert unamb == pytest.approx(0.0, abs=1e-3)
+
+    def test_worst_case_includes_offset(self):
+        # tie {[1,0],[0,1]} from full pred [cp+d]=[0,0]; true full [10,5], z*=5, worst=10 -> regret 5
+        from pyepo import EPO, dsl
+
+        x = dsl.Variable(2, vtype=EPO.BINARY)
+        c = dsl.Parameter(2)
+        d = np.array([10.0, 0.0])
+        m = dsl.Problem(dsl.Minimize((c + d) @ x), [x.sum() == 1]).compile(backend="gurobi")
+        loss = calUnambRegret(
+            m, np.array([-10.0, 0.0]), np.array([0.0, 5.0]), true_obj=5.0, tolerance=1.0
+        )
+        assert loss == pytest.approx(5.0)
+
+    def test_zero_with_objective_constant(self):
+        from pyepo import EPO, dsl
+
+        x = dsl.Variable(2, vtype=EPO.BINARY)
+        c = dsl.Parameter(2)
+        m = dsl.Problem(dsl.Minimize(c @ x + (x - 1).sum()), [x.sum() >= 1]).compile(
+            backend="gurobi"
+        )
+        cost = np.array([1.0, 2.0])
+        m.setObj(cost)
+        _, true_obj = m.solve()
+        assert abs(calUnambRegret(m, cost, cost, true_obj, tolerance=1.0)) < 1e-3
+
+
+# ============================================================
+# Dataloader-level metrics (untrained predictor -> sane floats)
+# ============================================================
+
+
+@requires_gurobi
+class TestDataloaderMetrics:
+    """Dataloader-level metrics on an untrained predictor."""
+
+    def test_regret_minimize(self, sp_data):
+        import pyepo
+
+        optmodel, _ds, loader = sp_data
+        reg = pyepo.metric.regret(LinearPred(NUM_FEAT, optmodel.num_cost), optmodel, loader)
+        assert isinstance(reg, float) and reg >= 0
+
+    def test_regret_maximize(self, ks_data):
+        import pyepo
+
+        optmodel, _ds, loader = ks_data
+        reg = pyepo.metric.regret(LinearPred(NUM_FEAT, optmodel.num_cost), optmodel, loader)
+        assert isinstance(reg, float) and reg >= 0
+
+    def test_mse(self, sp_data):
+        import pyepo
+
+        optmodel, _ds, loader = sp_data
+        mse = pyepo.metric.MSE(LinearPred(NUM_FEAT, optmodel.num_cost), loader)
+        assert isinstance(mse, float) and mse >= 0
+
+    def test_unamb_regret(self, sp_data):
+        import pyepo
+
+        optmodel, _ds, loader = sp_data
+        pred = LinearPred(NUM_FEAT, optmodel.num_cost)
+        pred.eval()
+        unamb = pyepo.metric.unambRegret(pred, optmodel, loader)
+        assert isinstance(unamb, float) and unamb >= -1e-6
+        assert not pred.training
+
+    def test_regret_preserves_eval_mode(self, sp_data):
+        import pyepo
+
+        optmodel, _ds, loader = sp_data
+        pred = LinearPred(NUM_FEAT, optmodel.num_cost)
+        pred.eval()
+        pyepo.metric.regret(pred, optmodel, loader)
+        assert not pred.training
+
+    def test_regret_reductions_consistent(self, sp_data):
+        import pyepo
+
+        optmodel, ds, loader = sp_data
+        torch.manual_seed(42)
+        pred = LinearPred(NUM_FEAT, optmodel.num_cost)
+        per = pyepo.metric.regret(pred, optmodel, loader, reduction="none")
+        total = pyepo.metric.regret(pred, optmodel, loader, reduction="sum")
+        mean = pyepo.metric.regret(pred, optmodel, loader, reduction="mean")
+        norm = pyepo.metric.regret(pred, optmodel, loader)
+        assert isinstance(per, np.ndarray) and len(per) == len(ds)
+        assert total == pytest.approx(per.sum(), rel=1e-5)
+        assert mean == pytest.approx(per.mean(), rel=1e-5)
+        zsum = sum(abs(z).sum().item() for _, _, _, z in loader)
+        assert norm == pytest.approx(total / zsum, rel=1e-4)
+
+    def test_regret_invalid_reduction(self, sp_data):
+        import pyepo
+
+        optmodel, _ds, loader = sp_data
+        with pytest.raises(ValueError):
+            pyepo.metric.regret(
+                LinearPred(NUM_FEAT, optmodel.num_cost), optmodel, loader, reduction="bad"
+            )
+
+    @pytest.mark.slow
+    def test_regret_multiprocess_matches_single(self, sp_data):
+        import pyepo
+
+        optmodel, _ds, loader = sp_data
+        torch.manual_seed(0)
+        pred = LinearPred(NUM_FEAT, optmodel.num_cost)
+        single = pyepo.metric.regret(pred, optmodel, loader)
+        multi = pyepo.metric.regret(pred, optmodel, loader, processes=2)
+        assert multi == pytest.approx(single, rel=1e-5)
+
+    def test_regret_offset_dataloader(self):
+        import pyepo
+        from pyepo import EPO, dsl
+        from pyepo.data.dataset import optDataset
+
+        x = dsl.Variable(2, vtype=EPO.BINARY)
+        c = dsl.Parameter(2)
+        m = dsl.Problem(dsl.Minimize(c @ x + (x - 1).sum()), [x.sum() >= 1]).compile(
+            backend="gurobi"
+        )
+        costs = (np.random.RandomState(42).rand(6, 2) + 0.1).astype(np.float32)
+        ds = optDataset(m, costs, costs)
+        loader = DataLoader(ds, batch_size=3)
+        # identity predictor makes predictions perfect, so regret must vanish
+        assert abs(pyepo.metric.regret(_IdentityModel(), m, loader)) < 1e-5
+
+
+# ============================================================
+# sklearn scorer
+# ============================================================
+
+
+@requires_gurobi
+class TestSkScorer:
+    """sklearn regret scorer."""
+
+    def test_scorer_argument_orientation(self):
+        from sklearn.linear_model import LinearRegression
+
+        import pyepo
+        from pyepo.twostage import sklearnPred
+
+        # nonlinear costs + noise keep the linear fit imperfect, so regret is asymmetric
+        x, c = pyepo.data.shortestpath.genData(
+            20, NUM_FEAT, (3, 3), deg=4, noise_width=0.5, seed=42
+        )
+        optmodel = _sp()
+        est = sklearnPred(LinearRegression())
+        est.fit(x, c)
+        cp = est.predict(x)
+        scorer = makeSkScorer(optmodel)
+        # sklearn calls score_func(y_true, y_pred): the scorer must negate SPOError(pred, true)
+        expected = -SPOError(cp, c, optmodel)
+        swapped = -SPOError(c, cp, optmodel)
+        assert expected < -1e-3
+        assert np.isclose(scorer(est, x, c), expected)
+        # the orientation is observable: swapping the arguments changes the value
+        assert not np.isclose(expected, swapped)
+
+
+# ============================================================
+# JAX callable path for pyepo.metric.regret
+# ============================================================
+
+
+@requires_mpax
+class TestDataloaderMetricsMpax:
+    """pyepo.metric.regret accepts a plain callable f(x_numpy) -> array."""
+
+    def test_callable_returns_non_negative_float(self, sp_mpax_data):
+        import pyepo
+
+        optmodel, _ds, loader = sp_mpax_data
+
+        def fn(x):
+            return np.ones((x.shape[0], optmodel.num_cost), dtype=np.float32)
+
+        reg = pyepo.metric.regret(fn, optmodel, loader)
+        assert isinstance(reg, float) and reg >= 0
+
+    def test_callable_reductions_consistent(self, sp_mpax_data):
+        import pyepo
+
+        optmodel, ds, loader = sp_mpax_data
+
+        def fn(x):
+            return np.ones((x.shape[0], optmodel.num_cost), dtype=np.float32)
+
+        per = pyepo.metric.regret(fn, optmodel, loader, reduction="none")
+        total = pyepo.metric.regret(fn, optmodel, loader, reduction="sum")
+        assert isinstance(per, np.ndarray) and len(per) == len(ds)
+        assert total == pytest.approx(per.sum(), rel=1e-5)
+
+
+@pytest.mark.skipif(
+    not (_HAS_GUROBI and _HAS_FLAX),
+    reason="Parity: Gurobi (exact solve) + Flax both required",
+)
+class TestDataloaderMetricsParity:
+    """JAX callable and torch nn.Module with identical weights give the same regret."""
+
+    def test_same_weights_same_regret(self, sp_data):
+        import functools
+
+        import jax.numpy as jnp
+        from flax import linen as nn
+
+        import pyepo
+
+        optmodel, _ds, loader = sp_data
+
+        # random torch predictor; capture weights as numpy
+        torch_pred = LinearPred(NUM_FEAT, optmodel.num_cost)
+        torch_pred.eval()
+        w = torch_pred.linear.weight.detach().numpy()  # (num_cost, num_feat)
+        b = torch_pred.linear.bias.detach().numpy()  # (num_cost,)
+
+        # Flax Dense: kernel shape is (num_feat, num_cost) = w.T
+        flax_pred = nn.Dense(optmodel.num_cost)
+        params = {"params": {"kernel": jnp.asarray(w.T), "bias": jnp.asarray(b)}}
+
+        torch_reg = pyepo.metric.regret(torch_pred, optmodel, loader)
+        jax_reg = pyepo.metric.regret(functools.partial(flax_pred.apply, params), optmodel, loader)
+        assert jax_reg == pytest.approx(torch_reg, abs=1e-4)
+
+
+class TestAutoSkScorer:
+    """auto-sklearn regret scorer."""
+
+    def test_raises_without_autosklearn(self):
+        from pyepo.metric.metrics import makeAutoSkScorer
+        from pyepo.twostage.autosklearnpred import _HAS_AUTO
+
+        if _HAS_AUTO:
+            pytest.skip("auto-sklearn is installed; skip negative test")
+        # the lazy autosklearn import fails before the model is touched
+        with pytest.raises(ImportError):
+            makeAutoSkScorer(None)

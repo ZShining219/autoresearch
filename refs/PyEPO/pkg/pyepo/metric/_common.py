@@ -1,0 +1,152 @@
+"""Shared helpers for metric configuration and evaluation."""
+
+from __future__ import annotations
+
+import math
+from contextlib import contextmanager
+from numbers import Real
+from typing import TYPE_CHECKING
+
+import numpy as np
+import torch
+
+from pyepo import EPO
+from pyepo.utils import _EPS
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    from torch import nn
+
+
+def regret_from_objective(obj, true_obj, model_sense):
+    """Return the signed regret gap for a minimization or maximization model."""
+    if model_sense == EPO.MINIMIZE:
+        return obj - true_obj
+    if model_sense == EPO.MAXIMIZE:
+        return true_obj - obj
+    raise ValueError("Invalid modelSense.")
+
+
+@contextmanager
+def torch_evaluation(model: nn.Module | None) -> Iterator[torch.device]:
+    """Yield the model device while temporarily enabling evaluation mode."""
+    if model is None:
+        yield torch.device("cpu")
+        return
+
+    was_training = model.training
+    parameter = next(model.parameters(), None)
+    device = parameter.device if parameter is not None else torch.device("cpu")
+    model.eval()
+    try:
+        yield device
+    finally:
+        model.train(was_training)
+
+
+def validate_tolerance(tolerance: float) -> None:
+    """Validate a finite, strictly positive numerical tolerance."""
+    if not isinstance(tolerance, Real) or isinstance(tolerance, bool):
+        raise ValueError("tolerance must be a finite positive number.")
+    number = float(tolerance)
+    if not math.isfinite(number) or number <= 0:
+        raise ValueError("tolerance must be a finite positive number.")
+
+
+def validate_retry_count(max_iter: int) -> None:
+    """Validate the recursive retry budget while preserving exhaustion semantics."""
+    if not isinstance(max_iter, int) or isinstance(max_iter, bool):
+        raise ValueError("max_iter must be a positive integer.")
+    if max_iter <= 0:
+        raise RuntimeError("Max iterations reached in calUnambRegret.")
+
+
+def is_real_numeric_array(value: np.ndarray) -> bool:
+    """Return whether an array has a non-complex numerical dtype."""
+    return np.issubdtype(value.dtype, np.number) and not np.issubdtype(
+        value.dtype, np.complexfloating
+    )
+
+
+def normalize_regret(regret_sum: float, absolute_optimum_sum: float) -> float:
+    """Normalize aggregate regret by absolute true optimum magnitude."""
+    return float(regret_sum) / (float(absolute_optimum_sum) + _EPS)
+
+
+def validate_prediction_batch(
+    pred_cost,
+    true_cost,
+    num_cost: int | None = None,
+    *,
+    require_nonempty: bool = False,
+) -> None:
+    """Validate matching, finite two-dimensional prediction and target batches."""
+    if pred_cost.ndim != 2 or true_cost.ndim != 2:
+        raise ValueError("Predicted and true costs must be two-dimensional batches.")
+    if pred_cost.shape != true_cost.shape:
+        raise ValueError("Shape of true and predicted cost batches does not match.")
+    if require_nonempty and pred_cost.shape[0] == 0:
+        raise ValueError("Predicted and true cost batches must not be empty.")
+    if num_cost is not None and pred_cost.shape[1] != num_cost:
+        raise ValueError(f"Cost batch width must match optmodel.num_cost ({num_cost}).")
+
+    if isinstance(pred_cost, torch.Tensor) and isinstance(true_cost, torch.Tensor):
+        if (
+            pred_cost.is_complex()
+            or true_cost.is_complex()
+            or pred_cost.dtype == torch.bool
+            or true_cost.dtype == torch.bool
+        ):
+            raise ValueError("Predicted and true costs must be numerical batches.")
+        finite = torch.isfinite(pred_cost).all() and torch.isfinite(true_cost).all()
+    else:
+        pred = np.asarray(pred_cost)
+        true = np.asarray(true_cost)
+        if not is_real_numeric_array(pred) or not is_real_numeric_array(true):
+            raise ValueError("Predicted and true costs must be numerical batches.")
+        finite = np.isfinite(pred).all() and np.isfinite(true).all()
+    if not finite:
+        raise ValueError("Predicted and true costs must contain only finite values.")
+
+
+def validate_numpy_cost_batches(
+    pred_cost,
+    true_cost,
+    num_cost: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Convert and validate NumPy-compatible cost batches."""
+    try:
+        pred = np.asarray(pred_cost)
+        true = np.asarray(true_cost)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Predicted and true costs must be numerical batches.") from exc
+    validate_prediction_batch(pred, true, num_cost, require_nonempty=True)
+    return pred, true
+
+
+def validate_cost_vectors(
+    pred_cost,
+    true_cost,
+    true_obj,
+    num_cost: int,
+) -> tuple[np.ndarray, np.ndarray, float]:
+    """Return valid single-instance costs and objective value."""
+    pred = np.asarray(pred_cost)
+    true = np.asarray(true_cost)
+    if pred.ndim != 1 or true.ndim != 1:
+        raise ValueError("Predicted and true costs must be one-dimensional vectors.")
+    if pred.shape != true.shape:
+        raise ValueError("Shape of true and predicted cost does not match.")
+    if pred.shape[0] != num_cost:
+        raise ValueError(f"Cost vector length must match optmodel.num_cost ({num_cost}).")
+    if not is_real_numeric_array(pred) or not is_real_numeric_array(true):
+        raise ValueError("Predicted and true costs must be numerical vectors.")
+    if not np.isfinite(pred).all() or not np.isfinite(true).all():
+        raise ValueError("Predicted and true costs must contain only finite values.")
+    if not isinstance(true_obj, Real) or isinstance(true_obj, bool):
+        raise ValueError("true_obj must be a finite number.")
+    objective = float(true_obj)
+    if not math.isfinite(objective):
+        raise ValueError("true_obj must be a finite number.")
+    return pred, true, objective

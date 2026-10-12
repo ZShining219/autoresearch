@@ -1,0 +1,11 @@
+# Level 2 (Ingolstadt) single-axis ablation: hub OD + noise only.
+# Demand/early-stop from the L1/L2 od_hub base; axis params from
+# configs/tsc/axis_noise_world.yml (same values as realism_full).
+includes:
+  - configs/tsc/maxpressure.yml
+  - configs/tsc/axis_noise_world.yml
+  - configs/tsc/od_hub_1x21_1800_base.yml
+
+trainer:
+  episodes: 1
+  early_stop: False

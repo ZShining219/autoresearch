@@ -1,0 +1,5 @@
+# L2 single-axis: mixed fleet only.
+# Same flag as realism_full_world.yml. Hub-OD files are type="pkw"; world_sumo
+# rewrites them to 80/20 car/truck and loads heteroAdditional.
+world:
+  hetero: true

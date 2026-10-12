@@ -1,0 +1,189 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyepo"
+version = "2.2.7"
+description = "PyTorch/JAX-based End-to-End Predict-then-Optimize Tool"
+readme = { file = "README.md", content-type = "text/markdown" }
+license = { text = "MIT" }
+authors = [{ name = "Bo Tang", email = "bolucas.tang@mail.utoronto.ca" }]
+requires-python = ">=3.9"
+keywords = [
+    "predict-then-optimize",
+    "end-to-end",
+    "decision-focused learning",
+    "optimization",
+    "deep learning",
+    "pytorch",
+    "jax",
+    "linear programming",
+    "integer programming",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Operating System :: OS Independent",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Intended Audience :: Science/Research",
+    "Typing :: Typed",
+]
+dependencies = [
+    "numpy",
+    "scipy",
+    "pathos",
+    "tqdm",
+    "scikit-learn",
+    "torch>=1.13.1",
+]
+
+[project.optional-dependencies]
+pyomo = ["pyomo>=6.1.2"]
+gurobi = ["gurobipy>=9.1.2"]
+copt = ["coptpy"]
+ortools = ["ortools>=9.6"]
+cave = ["clarabel"]
+mpax = ["mpax", "jax>=0.4.1", "jaxlib>=0.4.1"]
+jaxdev = ["flax", "optax"]
+autosklearn = ["auto-sklearn", "configspace"]
+all = [
+    "clarabel",
+    "pyomo>=6.1.2",
+    "gurobipy>=9.1.2",
+    "coptpy",
+    "ortools>=9.6",
+    "mpax",
+    "jax>=0.4.1",
+    "jaxlib>=0.4.1",
+]
+dev = ["pytest", "ruff", "pyright"]
+docs = [
+    "sphinx>=7",
+    "sphinx-autoapi>=3",
+    "furo>=2024.1",
+]
+
+[project.urls]
+Homepage = "https://github.com/khalil-research/PyEPO"
+Documentation = "https://khalil-research.github.io/PyEPO"
+Repository = "https://github.com/khalil-research/PyEPO"
+Issues = "https://github.com/khalil-research/PyEPO/issues"
+Paper = "https://link.springer.com/article/10.1007/s12532-024-00255-x"
+
+[tool.setuptools.packages.find]
+include = ["pyepo*"]
+
+[tool.setuptools.package-data]
+pyepo = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: tests dominated by multiprocessing/process-spawn; deselect with -m 'not slow'",
+]
+filterwarnings = [
+    # SWIG-generated stubs from OR-Tools / similar trip these on Python 3.12+
+    "ignore:builtin type \\S+ has no __module__ attribute:DeprecationWarning",
+]
+
+[tool.pyright]
+include = ["pyepo"]
+exclude = ["**/__pycache__", "**/.pytest_cache", "tests", "test.py"]
+extraPaths = ["."]
+pythonVersion = "3.9"
+typeCheckingMode = "standard"
+# optional solver backends may be missing in some envs
+reportMissingImports = "warning"
+reportMissingModuleSource = "none"
+reportPrivateImportUsage = "none"
+# try/except optional-backend imports are guarded by `_HAS_*` flags
+reportPossiblyUnboundVariable = "none"
+# subclass attrs set before super().__init__() aren't visible via base type
+reportAttributeAccessIssue = "warning"
+# covariant return narrowing in concrete solver subclasses
+reportIncompatibleMethodOverride = "warning"
+reportOptionalMemberAccess = "warning"
+
+# pyomo stubs misread valid Constraint/sum/value expressions
+[[tool.pyright.executionEnvironments]]
+root = "pyepo/model/omo"
+reportCallIssue = "warning"
+reportArgumentType = "warning"
+reportOperatorIssue = "warning"
+reportOptionalOperand = "warning"
+reportReturnType = "warning"
+
+# jax Array not seen as ndarray|Tensor
+[[tool.pyright.executionEnvironments]]
+root = "pyepo/model/mpax"
+reportAssignmentType = "warning"
+reportArgumentType = "warning"
+
+# coptpy intentionally not installed in CI
+[[tool.pyright.executionEnvironments]]
+root = "pyepo/model/copt"
+reportMissingImports = "none"
+
+# autosklearn/ConfigSpace intentionally not installed in CI
+[[tool.pyright.executionEnvironments]]
+root = "pyepo/twostage"
+reportMissingImports = "none"
+
+# torch autograd Function.forward/backward signature in typeshed is too strict
+[[tool.pyright.executionEnvironments]]
+root = "pyepo/func"
+reportIncompatibleMethodOverride = "none"
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+extend-exclude = ["test.py", "**/*.ipynb"]
+
+[tool.ruff.lint]
+# wide curated set; ignore the noisy/breaking ones below
+select = [
+    "E",
+    "W",
+    "F",
+    "I",
+    "UP",
+    "B",
+    "C4",
+    "SIM",
+    "RUF",
+    "PIE",
+    "RET",
+    "TC",
+    "PERF",
+    "BLE",
+    "LOG",
+    "PYI",
+]
+ignore = [
+    "E501",    # line too long (formatter handles)
+    "E741",    # ambiguous variable names (l/I/o ok in math contexts)
+    "RUF002",  # ambiguous unicode in docstrings (× α – intentional)
+    "RUF003",  # ambiguous unicode in comments
+    "RET504",  # assign-then-return is stylistic for long expressions
+]
+
+[tool.ruff.lint.per-file-ignores]
+# __version__ probe + logging setup live between imports
+"pyepo/__init__.py" = ["E402"]
+# optional backends imported via try/except; `__all__ +=` not seen as use
+"pyepo/model/__init__.py" = ["F401"]
+# __all__ is ordered as full-name, acronym pairs, not alphabetically
+"pyepo/func/__init__.py" = ["RUF022"]
+# optional-backend probes catch any setup failure (license errors, etc.)
+"tests/conftest.py" = ["BLE001"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["pyepo"]

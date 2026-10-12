@@ -1,0 +1,7 @@
+# Level 2 (Ingolstadt) single-axis ablation: hub OD + hetero only.
+# Demand/early-stop from the L1/L2 od_hub base; axis params from
+# configs/tsc/axis_hetero_world.yml (same values as realism_full).
+includes:
+  - configs/tsc/presslight.yml
+  - configs/tsc/axis_hetero_world.yml
+  - configs/tsc/od_hub_1x21_1800_base.yml

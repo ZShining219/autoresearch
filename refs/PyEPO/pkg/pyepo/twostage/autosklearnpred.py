@@ -1,0 +1,121 @@
+#!/usr/bin/env python
+"""
+Two-stage model with auto-sklearn predictor
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+try:
+    from autosklearn.metrics import mean_squared_error
+    from autosklearn.pipeline.components import data_preprocessing
+    from autosklearn.pipeline.components.base import AutoSklearnPreprocessingAlgorithm
+    from autosklearn.pipeline.constants import DENSE, INPUT, SPARSE, UNSIGNED_DATA
+    from autosklearn.regression import AutoSklearnRegressor
+    from ConfigSpace.configuration_space import ConfigurationSpace
+
+    class NoPreprocessing(AutoSklearnPreprocessingAlgorithm):
+        """
+        This is class of NoPreprocessing component for auto-sklearn
+        """
+
+        def __init__(self, **kwargs):
+            """
+            This preprocessor does not change the data
+            """
+            # Some internal checks makes sure parameters are set
+            for key, val in kwargs.items():
+                setattr(self, key, val)
+
+        def fit(self, X, Y=None):
+            return self
+
+        def transform(self, X):
+            return X
+
+        @staticmethod
+        def get_properties(dataset_properties=None):
+            return {
+                "shortname": "NoPreprocessing",
+                "name": "NoPreprocessing",
+                "handles_regression": True,
+                "handles_classification": True,
+                "handles_multiclass": True,
+                "handles_multilabel": True,
+                "handles_multioutput": True,
+                "is_deterministic": True,
+                "input": (SPARSE, DENSE, UNSIGNED_DATA),
+                "output": (INPUT,),
+            }
+
+        @staticmethod
+        def get_hyperparameter_search_space(dataset_properties=None):
+            return ConfigurationSpace()  # Return an empty configuration as there is None
+
+    # register NoPreprocessing with auto-sklearn once at import time
+    data_preprocessing.add_preprocessor(NoPreprocessing)
+
+    _HAS_AUTO = True
+except ImportError:
+    _HAS_AUTO = False
+
+
+from pyepo.metric import makeAutoSkScorer
+
+if TYPE_CHECKING:
+    from pyepo.model.opt import optModel
+
+
+def autoSklearnPred(
+    optmodel: optModel,
+    seed: int,
+    timelimit: int,
+    metric: str = "mse",
+) -> AutoSklearnRegressor:
+    """
+    Two-stage prediction and optimization with auto-sklearn.
+
+    Args:
+        optmodel: optimization model
+        seed: random seed for reproducibility
+        timelimit: time limit in seconds for auto-sklearn search
+        metric: evaluation metric, "mse" or "regret"
+
+    Returns:
+        AutoSklearnRegressor: Auto-sklearn multi-output regression model
+    """
+    # error
+    if not _HAS_AUTO:
+        raise ImportError(
+            "Autosklearn is not installed. Please install autosklearn to use this feature."
+        )
+    # build regressor
+    if metric == "regret":
+        pyepo_scorer = makeAutoSkScorer(optmodel)
+        regressor = AutoSklearnRegressor(
+            time_left_for_this_task=timelimit,
+            per_run_time_limit=1200,
+            memory_limit=None,
+            seed=seed,
+            metric=pyepo_scorer,
+            include={
+                "data_preprocessor": ["NoPreprocessing"],
+                "feature_preprocessor": ["no_preprocessing"],
+            },
+        )
+    elif metric == "mse":
+        regressor = AutoSklearnRegressor(
+            time_left_for_this_task=timelimit,
+            per_run_time_limit=150,
+            memory_limit=None,
+            seed=seed,
+            metric=mean_squared_error,
+            include={
+                "data_preprocessor": ["NoPreprocessing"],
+                "feature_preprocessor": ["no_preprocessing"],
+            },
+        )
+    else:
+        raise ValueError(f"Invalid metric {metric}. Metric should be 'regret' or 'mse'.")
+    return regressor

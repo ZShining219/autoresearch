@@ -1,0 +1,26 @@
+method,setting,network,att_s,source_note
+DQN,homo,sumo4x4,167.9,realism_benchmark_4x4 final test
+CoLight,homo,sumo4x4,173.1,realism_benchmark_4x4 final test
+MaxPressure,homo,sumo4x4,173.26,BRF corrected TLS
+PressLight,homo,sumo4x4,174.4,realism_benchmark_4x4 final test
+FixedTime,homo,sumo4x4,219.14,BRF corrected TLS
+MaxPressure,realism_full,sumo4x4,237.53,capstone BRF
+PressLight,realism_full,sumo4x4,248.0,capstone final test
+FixedTime,realism_full,sumo4x4,271.0,capstone BRF
+DQN,realism_full,sumo4x4,282.8,capstone final test
+CoLight,realism_full,sumo4x4,494.6,capstone final test
+MaxPressure,odh_l1,sumo4x4,157.2,HELDOUT_MEAN
+DQN,odh_l1,sumo4x4,156.9,HELDOUT_MEAN
+CoLight,odh_l1,sumo4x4,157.5,HELDOUT_MEAN
+PressLight,odh_l1,sumo4x4,163.4,HELDOUT_MEAN
+FixedTime,odh_l1,sumo4x4,186.6,HELDOUT_MEAN
+MaxPressure,odh_l2,sumo4x4,186.9,HELDOUT_MEAN
+PressLight,odh_l2,sumo4x4,190.9,HELDOUT_MEAN
+FixedTime,odh_l2,sumo4x4,192.2,HELDOUT_MEAN
+DQN,odh_l2,sumo4x4,245.3,HELDOUT_MEAN
+CoLight,odh_l2,sumo4x4,436.4,HELDOUT_MEAN
+PressLight,homo_es,sumo1x21,203.2,ingolstadt21 best TEST
+MaxPressure,homo_es,sumo1x21,209.0979,ingolstadt21 BRF
+DQN,homo_es,sumo1x21,236.5,ingolstadt21 best TEST
+FixedTime,homo_es,sumo1x21,248.9316,ingolstadt21 BRF
+CoLight,homo_es,sumo1x21,272.5,ingolstadt21 best TEST

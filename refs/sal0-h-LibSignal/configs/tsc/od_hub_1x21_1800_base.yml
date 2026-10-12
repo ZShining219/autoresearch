@@ -1,0 +1,47 @@
+# Shared 1800s hub-centric OD demand-set protocol for Ingolstadt (sumo1x21).
+# Paths are relative to world.dir (data/).
+#
+# sumo_begin/end override cfg afternoon peak (57600+) so synthetic OD at t=0..1800
+# is visible when LibSignal uses explicit -n/-r.
+#
+# Early-stop (same rule as grid4x4 OD-hub L1/L2):
+# TRAIN median waiting time over each 10-file demand rotation.
+# m(t) = mean of those 10 episode medians.
+# Flat if |m(t)-m(t-1)|/m(t-1) < 5% OR |m(t)-m(t-1)| < 1s.
+# Stop after 3 consecutive flat rotations. Hard cap 500.
+# Held-out ATT still picks the best checkpoint / trip-metrics.
+
+trainer:
+  steps: 1800
+  test_steps: 1800
+  episodes: 500
+  min_episodes: 30
+  early_stop: True
+  early_stop_mode: cycle_mean
+  early_stop_metric: wait
+  early_stop_patience: 3
+  early_stop_min_delta: 0.05
+  early_stop_abs_floor: 1.0
+  action_interval: 10
+  test_when_train: False
+  heldout_eval_every: 10
+
+world:
+  sumo_begin: 0
+  sumo_end: 1800
+  demand_train_file: raw_data/ingolstadt21/od_hubs/demand_set/fixed_1800.rou.xml
+  demand_set:
+    - raw_data/ingolstadt21/od_hubs/demand_set/train_00.rou.xml
+    - raw_data/ingolstadt21/od_hubs/demand_set/train_01.rou.xml
+    - raw_data/ingolstadt21/od_hubs/demand_set/train_02.rou.xml
+    - raw_data/ingolstadt21/od_hubs/demand_set/train_03.rou.xml
+    - raw_data/ingolstadt21/od_hubs/demand_set/train_04.rou.xml
+    - raw_data/ingolstadt21/od_hubs/demand_set/train_05.rou.xml
+    - raw_data/ingolstadt21/od_hubs/demand_set/train_06.rou.xml
+    - raw_data/ingolstadt21/od_hubs/demand_set/train_07.rou.xml
+    - raw_data/ingolstadt21/od_hubs/demand_set/train_08.rou.xml
+    - raw_data/ingolstadt21/od_hubs/demand_set/train_09.rou.xml
+  demand_heldout:
+    - raw_data/ingolstadt21/od_hubs/demand_set/hold_00.rou.xml
+    - raw_data/ingolstadt21/od_hubs/demand_set/hold_01.rou.xml
+    - raw_data/ingolstadt21/od_hubs/demand_set/hold_02.rou.xml

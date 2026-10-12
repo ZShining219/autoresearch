@@ -1,0 +1,7 @@
+# Level 2 single-axis ablation: hub OD + slow_start only.
+# Demand/early-stop from the L1/L2 od_hub base; axis params from
+# configs/tsc/axis_slow_start_world.yml (same values as realism_full).
+includes:
+  - configs/tsc/presslight.yml
+  - configs/tsc/axis_slow_start_world.yml
+  - configs/tsc/od_hub_1800_base.yml

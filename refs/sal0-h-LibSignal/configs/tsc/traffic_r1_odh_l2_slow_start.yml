@@ -1,0 +1,9 @@
+# L2 single-axis: Traffic-R1, hub OD, slow-start only. Inference, 4x4.
+# Needs the world_sumo pkw-strip fix (23a8a40) or SUMO exits on duplicate vType.
+includes:
+  - configs/tsc/traffic_r1.yml
+  - configs/tsc/axis_slow_start_world.yml
+
+trainer:
+  episodes: 1
+  early_stop: False

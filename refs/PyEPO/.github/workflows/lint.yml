@@ -1,0 +1,60 @@
+name: Lint and Type Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: lint-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  ruff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install ruff
+        # pinned to the pre-commit rev (.pre-commit-config.yaml)
+        run: pip install ruff==0.15.14
+
+      - name: Ruff check
+        working-directory: ./pkg
+        run: ruff check pyepo tests
+
+      - name: Ruff format check
+        working-directory: ./pkg
+        run: ruff format --check pyepo tests
+
+  pyright:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pkg/pyproject.toml
+
+      - name: Install package and pyright
+        working-directory: ./pkg
+        run: |
+          python -m pip install --upgrade pip
+          # install optional backends so pyright sees their stubs (autosklearn skipped: heavy)
+          pip install -e ".[pyomo,gurobi,ortools,mpax]"
+          pip install pyright
+
+      - name: Pyright
+        working-directory: ./pkg
+        run: pyright pyepo

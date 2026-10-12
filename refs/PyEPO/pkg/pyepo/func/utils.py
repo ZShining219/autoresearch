@@ -1,0 +1,315 @@
+#!/usr/bin/env python
+"""
+Utility function
+"""
+
+from __future__ import annotations
+
+import logging
+import math
+from contextlib import suppress
+from typing import TYPE_CHECKING
+
+import numpy as np
+import torch
+
+from pyepo.func._common import (
+    is_minimize,
+    require_solution_pool,
+    solution_pool_tolerance,
+    validate_positive,
+    validate_positive_int,
+)
+from pyepo.model.mpax import optMpaxModel
+from pyepo.utils import costToNumpy, objective_offset
+
+if TYPE_CHECKING:
+    from pyepo.func.abcmodule import optModule
+    from pyepo.model.opt import ModelSpec, optModel
+
+logger = logging.getLogger(__name__)
+
+# guards the per-batch MPAX device-mismatch warning so it fires once
+_warned_mpax_device_mismatch = False
+
+
+def _close_pool(pool) -> None:
+    """Best-effort shutdown that always attempts every pool-cleanup stage."""
+    if pool is None:
+        return
+    # A failed close must not prevent join/clear from reaping child workers.
+    for method_name in ("close", "join", "clear"):
+        with suppress(Exception):
+            getattr(pool, method_name)()
+
+
+def _solve_or_cache(cp: torch.Tensor, module: optModule) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    A function to get optimization solution in the forward/backward pass
+    """
+    optmodel = module.optmodel
+    processes = module.processes
+    pool = module.pool
+    solpool = module.solpool
+    if module._branch_rng.uniform() <= module.solve_ratio:
+        sol, obj, solpool = _solve_in_pass(cp, optmodel, processes, pool, solpool)
+    else:
+        solpool = require_solution_pool(solpool)
+        sol, obj, solpool = _cache_in_pass(cp, optmodel, solpool)
+    module.solpool = solpool
+    return sol, obj
+
+
+def _solve_in_pass(
+    cp: torch.Tensor,
+    optmodel: optModel,
+    processes: int,
+    pool,
+    solpool: torch.Tensor | None = None,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]:
+    """
+    A function to solve optimization and update solution pool
+    """
+    sol, obj = _solve_batch(cp, optmodel, processes, pool)
+    # update solution pool on cp's device (tensor-side dedup, no CPU sync)
+    if solpool is not None:
+        solpool = _update_solution_pool(sol, solpool)
+        if solpool.device != cp.device:
+            solpool = solpool.to(cp.device)
+    return sol, obj, solpool
+
+
+def _solve_batch(
+    cp: torch.Tensor | np.ndarray,
+    optmodel: optModel,
+    processes: int,
+    pool,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    A function to solve optimization in the forward/backward pass
+    """
+    # get device and dtype
+    device = cp.device if isinstance(cp, torch.Tensor) else torch.device("cpu")
+    dtype = cp.dtype if isinstance(cp, torch.Tensor) else torch.float32
+    # MPAX batch solving
+    if isinstance(optmodel, optMpaxModel):
+        # get params
+        optmodel._setFullObj(cp)
+        cp = optmodel.c  # pyright: ignore[reportAssignmentType]  # jax Array
+        # batch solving
+        sol, obj, _ = optmodel.batch_optimize(cp)
+        # convert to torch
+        sol = torch.from_dlpack(sol)
+        obj = torch.from_dlpack(obj)
+        if sol.device != device:
+            # warn once; a persistent mismatch would otherwise flood logs per batch
+            global _warned_mpax_device_mismatch
+            if not _warned_mpax_device_mismatch:
+                logger.warning(
+                    "MPAX solutions on %s differ from input device %s; copying",
+                    sol.device,
+                    device,
+                )
+                _warned_mpax_device_mismatch = True
+            sol, obj = sol.to(device), obj.to(device)
+        # obj sense
+        if not is_minimize(optmodel.modelSense):
+            obj = -obj
+        # add the bare objective constant
+        offset = objective_offset(optmodel)
+        if offset:
+            obj = obj + offset
+        # match input dtype
+        sol, obj = sol.to(dtype), obj.to(dtype)
+    # host solving on numpy costs
+    else:
+        sol_np, obj_np = _solve_batch_np(costToNumpy(cp), optmodel, processes, pool)
+        sol = torch.as_tensor(sol_np).to(device=device, dtype=dtype)
+        obj = torch.as_tensor(obj_np).to(device=device, dtype=dtype)
+    return sol, obj
+
+
+def _solve_batch_np(
+    cp: np.ndarray,
+    optmodel: optModel,
+    processes: int,
+    pool,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    A function to solve a batch of numpy costs on the host, shared by both frontends
+    """
+    # match input precision
+    out_dtype = np.result_type(cp.dtype, np.float32)
+    # single-core
+    if processes == 1:
+        sol_list: list = []
+        obj_list: list = []
+        for i in range(len(cp)):
+            optmodel._setFullObj(cp[i])
+            solp, objp = optmodel.solve()
+            sol_list.append(solp)
+            obj_list.append(objp)
+        # stack + dtype convert in a single call
+        sol = np.asarray(sol_list, dtype=out_dtype)
+        obj = np.asarray(obj_list, dtype=out_dtype)
+    # multi-core (workers pre-loaded with optmodel via pool initializer)
+    else:
+        res = pool.amap(_solve_with_obj_in_worker, cp).get()
+        sol = np.stack([r[0] for r in res]).astype(out_dtype)
+        obj = np.asarray([r[1] for r in res], dtype=out_dtype)
+    return sol, obj
+
+
+def _update_solution_pool(
+    sol: torch.Tensor,
+    solpool: torch.Tensor | None,
+) -> torch.Tensor:
+    """
+    Append rows of `sol` to `solpool` that aren't already present.
+
+    Dedup runs with `torch.unique` + `torch.cdist` on `solpool`'s device.
+    """
+    if solpool is None:
+        return torch.unique(sol, dim=0).clone()
+    if sol.device != solpool.device:
+        sol = sol.to(solpool.device)
+    # match pool dtype
+    if solpool.dtype != sol.dtype:
+        solpool = solpool.to(sol.dtype)
+    sol_uniq = torch.unique(sol, dim=0)
+    # capped L1-tolerance dedup: first-order solvers re-emit near-identical vertices
+    tol = solution_pool_tolerance(sol.shape[-1])
+    dists = torch.cdist(sol_uniq, solpool, p=1.0)
+    is_new = (dists > tol).all(dim=1)
+    if bool(is_new.any()):
+        solpool = torch.cat((solpool, sol_uniq[is_new]), dim=0)
+    return solpool
+
+
+def _cache_in_pass(
+    cp: torch.Tensor,
+    optmodel: optModel,
+    solpool: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    A function to use solution pool in the forward/backward pass
+    """
+    # move solpool to the correct device and dtype
+    if solpool.device != cp.device or solpool.dtype != cp.dtype:
+        solpool = solpool.to(device=cp.device, dtype=cp.dtype)
+    # best solution in pool
+    solpool_obj = torch.matmul(cp, solpool.T)
+    select = torch.argmin if is_minimize(optmodel.modelSense) else torch.argmax
+    ind = select(solpool_obj, dim=1)
+    obj = solpool_obj.gather(1, ind.view(-1, 1)).squeeze(1)
+    sol = solpool[ind]
+    # add the bare objective constant
+    offset = objective_offset(optmodel)
+    if offset:
+        obj = obj + offset
+    return sol, obj, solpool
+
+
+# per-worker optmodel, built by `_init_worker_model` at pool startup
+_worker_model: optModel | None = None
+
+
+def _init_worker_model(spec: ModelSpec) -> None:
+    """Pool-initializer hook: build the optmodel once per worker process."""
+    global _worker_model
+    _worker_model = spec.build()
+
+
+def _solve_with_obj_in_worker(cost: np.ndarray) -> tuple[np.ndarray, float]:
+    """Solve a single instance in a pool worker using the pre-built optmodel."""
+    if _worker_model is None:
+        raise RuntimeError("_init_worker_model must run before solving in a worker")
+    _worker_model._setFullObj(cost)
+    sol, obj = _worker_model.solve()
+    return np.asarray(sol, dtype=np.float32), obj
+
+
+def _check_sol(c: torch.Tensor, w: torch.Tensor, z: torch.Tensor) -> None:
+    """
+    A function to check solution is correct
+    """
+    z_flat = z.squeeze(-1) if z.dim() > 1 else z
+    error = torch.abs(z_flat - torch.einsum("bi,bi->b", c, w)) / (torch.abs(z_flat) + 1e-3)
+    if torch.any(error >= 1e-3):
+        raise AssertionError("Some solutions do not match the objective value.")
+
+
+def _mask_pred(noises: torch.Tensor, optmodel: optModel) -> torch.Tensor:
+    """
+    Zero a cost perturbation outside the predicted positions.
+
+    No-op when every variable carries a predicted cost (``c_pred_index`` is
+    ``None``); under partial prediction the known fixed costs are left
+    unperturbed.
+    """
+    idx = optmodel.c_pred_index
+    if idx is None:
+        return noises
+    mask = noises.new_zeros(noises.shape[-1])
+    mask[torch.as_tensor(idx, dtype=torch.long, device=noises.device)] = 1.0
+    return noises * mask
+
+
+def _torch_generator(
+    cache: dict[str, torch.Generator],
+    device: torch.device | str,
+    seed: int,
+) -> torch.Generator:
+    """Lazily create and cache a per-device torch.Generator seeded from `seed`."""
+    dev = torch.device(device) if isinstance(device, str) else device
+    key = str(dev)
+    gen = cache.get(key)
+    if gen is None:
+        gen = torch.Generator(device=dev)
+        gen.manual_seed(seed)
+        cache[key] = gen
+    return gen
+
+
+class sumGammaDistribution:
+    """
+    creates a generator of samples for the Sum-of-Gamma distribution
+    """
+
+    def __init__(self, kappa: float, n_iterations: int = 10, seed: int = 135) -> None:
+        validate_positive(kappa, "kappa")
+        validate_positive_int(n_iterations, "n_iterations")
+        self.κ = kappa
+        self.n_iterations = n_iterations
+        self.seed = seed
+        self.rnd = np.random.RandomState(seed)
+        self._gen_cache: dict[str, torch.Generator] = {}
+
+    def sample(
+        self,
+        size: int | tuple[int, ...],
+        *,
+        device: torch.device | str | None = None,
+        dtype: torch.dtype = torch.float32,
+    ) -> np.ndarray | torch.Tensor:
+        # numpy path
+        if device is None:
+            samples = 0
+            for i in range(1, self.n_iterations + 1):
+                samples += self.rnd.gamma(1 / self.κ, self.κ / i, size)
+            samples -= np.log(self.n_iterations)
+            samples /= self.κ
+            return samples
+        # torch path
+        size_t = size if isinstance(size, tuple) else (size,)
+        gen = _torch_generator(self._gen_cache, device, self.seed)
+        # alpha block: n_iterations on the leading axis for a single sampler call
+        alpha = torch.full((self.n_iterations, *size_t), 1.0 / self.κ, device=device, dtype=dtype)
+        gammas = torch._standard_gamma(alpha, generator=gen)
+        # per-iteration weights kappa/i, broadcast over the trailing sample axes
+        weights = self.κ / torch.arange(1, self.n_iterations + 1, device=device, dtype=dtype)
+        weights = weights.view(self.n_iterations, *([1] * len(size_t)))
+        samples = (gammas * weights).sum(dim=0)
+        samples.sub_(math.log(self.n_iterations))
+        samples.div_(self.κ)
+        return samples

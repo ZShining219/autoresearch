@@ -1,0 +1,8 @@
+# Level 2: hub OD demand set + realism_full world axes.
+includes:
+  - configs/tsc/maxpressure.yml
+  - configs/tsc/realism_full_world.yml
+  - configs/tsc/od_hub_1800_base.yml
+
+trainer:
+  episodes: 1

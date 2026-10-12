@@ -1,0 +1,9 @@
+# Level 2 (Ingolstadt): hub OD demand set + realism_full.
+includes:
+  - configs/tsc/maxpressure.yml
+  - configs/tsc/realism_full_world.yml
+  - configs/tsc/od_hub_1x21_1800_base.yml
+
+trainer:
+  episodes: 1
+  early_stop: False

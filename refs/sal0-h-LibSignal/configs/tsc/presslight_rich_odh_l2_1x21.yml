@@ -1,0 +1,5 @@
+includes:
+  - configs/tsc/presslight_odh_l2_1x21.yml
+
+model:
+  name: presslight_rich

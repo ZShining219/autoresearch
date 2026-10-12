@@ -1,0 +1,11 @@
+__pycache__/
+examples/*
+!examples/.gitkeep
+*.DS_Store
+.idea/
+log/
+local/
+data/frontend/
+venv/
+.vscode
+data/output_data

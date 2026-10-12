@@ -1,0 +1,5 @@
+includes:
+  - configs/tsc/dqn.yml
+
+world:
+  hetero: true

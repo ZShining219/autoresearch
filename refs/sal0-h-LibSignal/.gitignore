@@ -1,0 +1,48 @@
+__pycache__/
+*.py[cod]
+*.DS_Store
+.idea/
+.vscode/
+.env
+
+# Stray tool artifact (literal dir from a mis-expanded variable)
+%OUTDIR%/
+
+# Python virtual environment (Cursor Cloud dev setup)
+.venv/
+.venv_odh/
+.odh_deps/
+
+# Experiment outputs (logs, checkpoints, local summaries)
+data/output_data/**/model/
+data/output_data/**/*.pt
+data/output_data/**/*.pth
+data/output_data/tsc/processed_results*.csv
+data/output_data/**/rich_smoke/
+
+
+# LaTeX build artifacts (source: docs/team_instructions.tex)
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz
+*.fdb_latexmk
+*.fls
+
+*.ipynb
+*.mdb
+
+# keep experiment DTL/BRF logs even though *.log is ignored for LaTeX
+!data/output_data/**/*.log
+
+# Track Ingolstadt analysis notebook
+!result_analysis/ingolstadt21.ipynb
+
+# Keep raw Level-1 experiment stdout/stderr and downloaded logs local only.
+archive/llm_controller_level1/
+
+# Runtime copies of hub-OD routes with inline vType stripped for slow_start
+**/.slow_start_notype/
+# Runtime hub-OD copies with 80/20 car/truck for hetero
+**/.hetero_mix/

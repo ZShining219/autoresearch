@@ -1,0 +1,9 @@
+includes:
+  - configs/tsc/dqn.yml
+
+# Partial-observability example: noisy detectors (see base.yml -> world.obs_count_noise_std).
+# RL trains on the noisy counts. Train under noise, or train clean and evaluate under noise
+# to measure robustness to sensor miscounts.
+world:
+  obs_count_noise_std: 2.0
+  obs_noise_mode: additive

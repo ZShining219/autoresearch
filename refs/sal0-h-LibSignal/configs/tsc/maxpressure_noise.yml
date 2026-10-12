@@ -1,0 +1,9 @@
+includes:
+  - configs/tsc/maxpressure.yml
+
+# Partial-observability example: noisy detectors. Each per-lane vehicle count the
+# controller reads is corrupted by additive Gaussian noise (sigma=2). Physics unchanged;
+# same seeded noise for every agent. See configs/tsc/base.yml -> world.obs_count_noise_std.
+world:
+  obs_count_noise_std: 2.0
+  obs_noise_mode: additive

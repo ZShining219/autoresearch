@@ -1,0 +1,8 @@
+includes:
+  - configs/tsc/fixedtime.yml
+
+# Partial-observability example (see configs/tsc/base.yml -> world.obs_penetration).
+# Fixed-time control ignores observations, so its ground-truth ATT is invariant to the
+# penetration rate — it serves as the control baseline that "sees nothing" already.
+world:
+  obs_penetration: 0.1

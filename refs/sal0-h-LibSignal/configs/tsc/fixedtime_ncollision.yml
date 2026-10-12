@@ -1,0 +1,6 @@
+includes:
+  - configs/tsc/fixedtime.yml
+
+world:
+  physics_mode: ghost
+  gui: False

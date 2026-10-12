@@ -1,0 +1,132 @@
+#!/usr/bin/env python
+"""
+Differentiable Black-box optimization function
+"""
+
+from __future__ import annotations
+
+from functools import partial
+
+import jax
+
+from pyepo.func._common import is_minimize, validate_positive
+from pyepo.func.jax.abcmodule import optModule
+from pyepo.func.jax.utils import _full_cost, _solve_or_cache
+from pyepo.utils import _EPS
+
+
+class blackboxOpt(optModule):
+    """
+    Differentiable Black-Box Optimizer (DBB) -- gradient via solution interpolation.
+
+    Replaces the solver's zero gradient with an interpolation estimate: for an
+    upstream gradient :math:`\\mathbf{d}`, the vector-Jacobian product is
+    :math:`(\\mathbf{w}^*(\\hat{\\mathbf{c}} + \\lambda \\mathbf{d}) -
+    \\mathbf{w}^*(\\hat{\\mathbf{c}})) / \\lambda`. Larger ``lambd`` smooths
+    more (recommended 10-20).
+
+    Reference: Vlastelica et al. (2020) `<https://openreview.net/forum?id=BkevoJSYPB>`_
+    """
+
+    def __init__(self, optmodel, lambd=10, processes=1, solve_ratio=1.0, dataset=None):
+        """
+        Args:
+            optmodel: a PyEPO optimization model
+            lambd: interpolation smoothing strength (recommended 10-20)
+            processes: number of solver processes (1 = single-core, 0 = all cores)
+            solve_ratio: fraction of instances solved exactly each step
+            dataset: training dataset used to seed the solution pool when solve_ratio < 1
+        """
+        validate_positive(lambd, "lambda")
+        super().__init__(optmodel, processes, solve_ratio, dataset=dataset)
+        self.lambd = float(lambd)
+
+    def forward(self, pred_cost):
+        """
+        Forward pass
+        """
+        # lift to the full objective space
+        pred_cost = _full_cost(pred_cost, self.optmodel)
+        return _blackbox_opt(pred_cost, self, self.lambd)
+
+
+@partial(jax.custom_vjp, nondiff_argnums=(1, 2))
+def _blackbox_opt(pred_cost, module, lambd):
+    sol, _ = _solve_or_cache(pred_cost, module)
+    return sol
+
+
+def _blackbox_opt_fwd(pred_cost, module, lambd):
+    sol, _ = _solve_or_cache(pred_cost, module)
+    return sol, (pred_cost, sol)
+
+
+def _blackbox_opt_bwd(module, lambd, res, g):
+    pred_cost, wp = res
+    # the informative perturbation direction flips for MAX
+    sign = 1.0 if is_minimize(module.optmodel.modelSense) else -1.0
+    # perturbed solve in the backward pass
+    sol, _ = _solve_or_cache(pred_cost + sign * lambd * g, module)
+    # interpolation gradient
+    grad = sign * (sol - wp) / (lambd + _EPS)
+    return (grad,)
+
+
+_blackbox_opt.defvjp(_blackbox_opt_fwd, _blackbox_opt_bwd)
+
+
+class negativeIdentity(optModule):
+    """
+    Negative Identity Backpropagation (NID) -- hyperparameter-free DBB.
+
+    Treats the solver Jacobian as a signed identity:
+    :math:`\\partial \\mathbf{w}^* / \\partial \\hat{\\mathbf{c}} \\approx
+    -\\mathbf{I}` for minimization (and :math:`+\\mathbf{I}` for maximization),
+    a straight-through gradient estimator needing no extra solve.
+
+    Reference: Sahoo et al. (2023) `<https://openreview.net/forum?id=JZMR727O29>`_
+    """
+
+    def __init__(self, optmodel, processes=1, solve_ratio=1.0, dataset=None):
+        """
+        Args:
+            optmodel: a PyEPO optimization model
+            processes: number of solver processes (1 = single-core, 0 = all cores)
+            solve_ratio: fraction of instances solved exactly each step
+            dataset: training dataset used to seed the solution pool when solve_ratio < 1
+        """
+        super().__init__(optmodel, processes, solve_ratio, dataset=dataset)
+
+    def forward(self, pred_cost):
+        """
+        Forward pass
+        """
+        # lift to the full objective space
+        pred_cost = _full_cost(pred_cost, self.optmodel)
+        return _negative_identity(pred_cost, self)
+
+
+@partial(jax.custom_vjp, nondiff_argnums=(1,))
+def _negative_identity(pred_cost, module):
+    sol, _ = _solve_or_cache(pred_cost, module)
+    return sol
+
+
+def _negative_identity_fwd(pred_cost, module):
+    sol, _ = _solve_or_cache(pred_cost, module)
+    return sol, None
+
+
+def _negative_identity_bwd(module, _res, g):
+    # negative identity gradient
+    if is_minimize(module.optmodel.modelSense):
+        return (-g,)
+    return (g,)
+
+
+_negative_identity.defvjp(_negative_identity_fwd, _negative_identity_bwd)
+
+
+# acronym aliases
+DBB = blackboxOpt
+NID = negativeIdentity

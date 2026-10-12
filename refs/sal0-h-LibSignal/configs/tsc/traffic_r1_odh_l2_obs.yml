@@ -1,0 +1,8 @@
+# L2 single-axis: Traffic-R1, hub OD, penetration p=0.8 only. Inference, 4x4.
+includes:
+  - configs/tsc/traffic_r1.yml
+  - configs/tsc/axis_obs_world.yml
+
+trainer:
+  episodes: 1
+  early_stop: False

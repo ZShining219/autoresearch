@@ -1,0 +1,97 @@
+task:
+  description: use RL methods to optimize traffic signal control problems
+  task_name: tsc
+
+world:
+# necessary and distinctive parameters for simulators
+  interval: 1.0
+  seed: 0
+  dir: data/
+
+  saveReplay: True
+  report_log_mode: normal # cbengine
+  report_log_rate: 10
+
+  no_warning: True
+  gui: False
+
+  rlTrafficLight: True
+
+  physics_mode: standard   # standard | ghost
+
+  hetero: false             # false = uniform vType baseline; true = mixed cars+trucks
+  slow_start: false          # false = default pkw accel; true = realistic startup accel + headway
+                             # hetero+s slow_start together: use realism_full profile (see docs/REALISM_FULL.md)
+
+  # Actuated crossing-delay proxy (see docs/CROSSING_PROXY.md). Stochastic lane service
+  # interruptions on conflicting approaches during through-green phases; composable.
+  crossing_proxy: false
+  crossing_call_prob: 0.12    # P(ped call | eligible through-green phase entry), urban actuated
+  crossing_service_min: 7.0    # s — walk + min clearance (MUTCD ~4 ft/s over ~12 m crosswalk)
+  crossing_service_max: 10.0   # s — walk + FDW / clearance interval
+  crossing_seed_offset: 7      # separate RNG stream from demand / partial-obs corruption
+
+  # Partial observability (see docs/PARTIAL_OBSERVABILITY.md). Two composable axes; both
+  # default to a no-op (exact baseline). Physics is unchanged; the same seeded corruption is
+  # applied for every agent so ground-truth ATT stays comparable.
+  obs_penetration: 1.0      # fraction of vehicles "visible" to the controller (connected-
+                            # vehicle penetration rate). 1.0 = full observability (baseline);
+                            # e.g. 0.1 = only 10% of cars detected. Persistent per vehicle.
+  obs_count_noise_std: 0.0  # Gaussian measurement noise on the per-lane vehicle counts the
+                            # controller reads (noisy loop/camera detectors). 0.0 = exact
+                            # counts (baseline). Re-sampled each step, ~unbiased, clamped >=0.
+  obs_noise_mode: additive  # 'additive' -> N(0, sigma^2); 'proportional' -> N(0,(sigma*true)^2)
+
+trainer:
+  thread: 4
+  ngpu: -1
+  learning_start: 5000
+  buffer_size: 5000
+  steps: 3600
+  test_steps: 3600
+  yellow_length: 5
+  action_interval: 10
+  episodes: 200
+  update_model_rate: 1
+  update_target_rate: 10
+  test_when_train: True
+  # Adaptive episode budget (off here; L1/L2 OD-hub configs turn it on).
+  early_stop: False
+  # Per-vehicle trip metrics (SUMO only) under the run logger/ dir:
+  # - always on final test: new_metrics.csv (+ new_metrics_hold_* if held-out)
+  # - RL (train_model=True) also re-evals best ATT checkpoint: new_metrics_best*
+  #   (best tracked from test_when_train and/or heldout_eval_every)
+  save_trip_metrics: True
+
+model:
+  name: "non-rl"
+  train_model: False
+  test_model: True
+  load_model: False
+  graphic: False
+  vehicle_max: 1 # TODO: what is this for
+  learning_rate: 0.001
+  batch_size: 64
+  gamma: 0.95
+  epsilon: 0.5
+  epsilon_decay: 0.99
+  epsilon_min: 0.05
+  grad_clip: 5.0
+
+  one_hot: False
+  phase: False
+
+logger:
+  root_dir: "data/output_data/"
+  log_dir: "logger/"
+  replay_dir: "replay/"
+  model_dir: "model/"
+  data_dir: "dataset/"
+  save_model: True
+  save_rate: 5
+  attention: False
+
+
+
+
+

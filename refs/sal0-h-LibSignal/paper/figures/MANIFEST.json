@@ -1,0 +1,282 @@
+[
+  {
+    "file": "adaptive_episodes_c04_i0.png",
+    "notebook": "adaptive_episodes.ipynb",
+    "cell": 4,
+    "caption_hint": "Part A \u2014 Homo baseline (`baseline_early_stop`)",
+    "bytes": 74615
+  },
+  {
+    "file": "adaptive_episodes_c09_i1.png",
+    "notebook": "adaptive_episodes.ipynb",
+    "cell": 9,
+    "caption_hint": "OD-hub learning curves",
+    "bytes": 165242
+  },
+  {
+    "file": "demand_bag_1200_dqn_c03_i0.png",
+    "notebook": "demand_bag_1200_dqn.ipynb",
+    "cell": 3,
+    "caption_hint": "1. Train vs test by agent (seed 42)",
+    "bytes": 56439
+  },
+  {
+    "file": "demand_bag_1200_dqn_c06_i1.png",
+    "notebook": "demand_bag_1200_dqn.ipynb",
+    "cell": 6,
+    "caption_hint": "2. Held-out (test) curves \u2014 all methods",
+    "bytes": 58113
+  },
+  {
+    "file": "demand_bag_1200_dqn_c09_i2.png",
+    "notebook": "demand_bag_1200_dqn.ipynb",
+    "cell": 9,
+    "caption_hint": "3. Generalization gap (test \u2212 train), seed 42",
+    "bytes": 33717
+  },
+  {
+    "file": "improved_metrics_c05_i0.png",
+    "notebook": "improved_metrics.ipynb",
+    "cell": 5,
+    "caption_hint": "Travel time distribution (completed trips)",
+    "bytes": 50243
+  },
+  {
+    "file": "improved_metrics_c07_i1.png",
+    "notebook": "improved_metrics.ipynb",
+    "cell": 7,
+    "caption_hint": "Distance traveled (completed trips)",
+    "bytes": 29463
+  },
+  {
+    "file": "improved_metrics_c09_i2.png",
+    "notebook": "improved_metrics.ipynb",
+    "cell": 9,
+    "caption_hint": "Idle share (`waiting_fraction` = idle / trip time)",
+    "bytes": 50201
+  },
+  {
+    "file": "improved_metrics_c11_i3.png",
+    "notebook": "improved_metrics.ipynb",
+    "cell": 11,
+    "caption_hint": "Schedule efficiency (higher = better)",
+    "bytes": 21620
+  },
+  {
+    "file": "ingolstadt21_c05_i0.png",
+    "notebook": "ingolstadt21.ipynb",
+    "cell": 5,
+    "caption_hint": "---",
+    "bytes": 24829
+  },
+  {
+    "file": "ingolstadt21_c05_i1.png",
+    "notebook": "ingolstadt21.ipynb",
+    "cell": 5,
+    "caption_hint": "---",
+    "bytes": 89988
+  },
+  {
+    "file": "ingolstadt21_c07_i2.png",
+    "notebook": "ingolstadt21.ipynb",
+    "cell": 7,
+    "caption_hint": "---",
+    "bytes": 24160
+  },
+  {
+    "file": "ingolstadt21_c07_i3.png",
+    "notebook": "ingolstadt21.ipynb",
+    "cell": 7,
+    "caption_hint": "---",
+    "bytes": 102110
+  },
+  {
+    "file": "ingolstadt21_c09_i4.png",
+    "notebook": "ingolstadt21.ipynb",
+    "cell": 9,
+    "caption_hint": "Early-stop vs fixed-200",
+    "bytes": 32531
+  },
+  {
+    "file": "ingolstadt21_c14_i5.png",
+    "notebook": "ingolstadt21.ipynb",
+    "cell": 14,
+    "caption_hint": "Axis learning curves (train | test per RL method)",
+    "bytes": 90665
+  },
+  {
+    "file": "ingolstadt21_c14_i6.png",
+    "notebook": "ingolstadt21.ipynb",
+    "cell": 14,
+    "caption_hint": "Axis learning curves (train | test per RL method)",
+    "bytes": 117593
+  },
+  {
+    "file": "ingolstadt21_c14_i7.png",
+    "notebook": "ingolstadt21.ipynb",
+    "cell": 14,
+    "caption_hint": "Axis learning curves (train | test per RL method)",
+    "bytes": 94718
+  },
+  {
+    "file": "ingolstadt21_c16_i8.png",
+    "notebook": "ingolstadt21.ipynb",
+    "cell": 16,
+    "caption_hint": "---",
+    "bytes": 14388
+  },
+  {
+    "file": "ingolstadt21_c18_i9.png",
+    "notebook": "ingolstadt21.ipynb",
+    "cell": 18,
+    "caption_hint": "---",
+    "bytes": 14832
+  },
+  {
+    "file": "ingolstadt21_c20_i10.png",
+    "notebook": "ingolstadt21.ipynb",
+    "cell": 20,
+    "caption_hint": "L1 \u2192 L2 (when both synced)",
+    "bytes": 32838
+  },
+  {
+    "file": "od_hub_benchmark_4x4_c06_i0.png",
+    "notebook": "od_hub_benchmark_4x4.ipynb",
+    "cell": 6,
+    "caption_hint": "5. `realism_full` \u2014 added components (Level 2 only)",
+    "bytes": 27212
+  },
+  {
+    "file": "od_hub_benchmark_4x4_c11_i1.png",
+    "notebook": "od_hub_benchmark_4x4.ipynb",
+    "cell": 11,
+    "caption_hint": "6.1 Level 1 \u2014 demand only",
+    "bytes": 65377
+  },
+  {
+    "file": "od_hub_benchmark_4x4_c15_i2.png",
+    "notebook": "od_hub_benchmark_4x4.ipynb",
+    "cell": 15,
+    "caption_hint": "6.2 Level 2 \u2014 demand + realism_full",
+    "bytes": 86602
+  },
+  {
+    "file": "realism_benchmark_4x4_c21_i0.png",
+    "notebook": "realism_benchmark_4x4.ipynb",
+    "cell": 21,
+    "caption_hint": "4. Training curves (train dashed \u00b7 test solid)",
+    "bytes": 54541
+  },
+  {
+    "file": "realism_benchmark_4x4_c22_i1.png",
+    "notebook": "realism_benchmark_4x4.ipynb",
+    "cell": 22,
+    "caption_hint": "4. Training curves (train dashed \u00b7 test solid)",
+    "bytes": 60682
+  },
+  {
+    "file": "realism_benchmark_4x4_c23_i2.png",
+    "notebook": "realism_benchmark_4x4.ipynb",
+    "cell": 23,
+    "caption_hint": "4. Training curves (train dashed \u00b7 test solid)",
+    "bytes": 60393
+  },
+  {
+    "file": "realism_benchmark_4x4_c24_i3.png",
+    "notebook": "realism_benchmark_4x4.ipynb",
+    "cell": 24,
+    "caption_hint": "",
+    "bytes": 59710
+  },
+  {
+    "file": "realism_benchmark_4x4_c25_i4.png",
+    "notebook": "realism_benchmark_4x4.ipynb",
+    "cell": 25,
+    "caption_hint": "",
+    "bytes": 104812
+  },
+  {
+    "file": "realism_benchmark_4x4_c26_i5.png",
+    "notebook": "realism_benchmark_4x4.ipynb",
+    "cell": 26,
+    "caption_hint": "",
+    "bytes": 61531
+  },
+  {
+    "file": "realism_benchmark_4x4_c30_i6.png",
+    "notebook": "realism_benchmark_4x4.ipynb",
+    "cell": 30,
+    "caption_hint": "Reading the capstone table",
+    "bytes": 114024
+  },
+  {
+    "file": "results_c04_i0.png",
+    "notebook": "results.ipynb",
+    "cell": 4,
+    "caption_hint": "1. Training curves (train vs test per episode)",
+    "bytes": 80842
+  },
+  {
+    "file": "results_c12_i1.png",
+    "notebook": "results.ipynb",
+    "cell": 12,
+    "caption_hint": "1. Training curves (train vs test per episode)",
+    "bytes": 88613
+  },
+  {
+    "file": "results_c17_i2.png",
+    "notebook": "results.ipynb",
+    "cell": 17,
+    "caption_hint": "I will re run the mplight with 500 episodes to see if it would converge",
+    "bytes": 138222
+  },
+  {
+    "file": "results_c19_i3.png",
+    "notebook": "results.ipynb",
+    "cell": 19,
+    "caption_hint": "Actor critic Models (MAPG, IPPO)",
+    "bytes": 133189
+  },
+  {
+    "file": "results_c23_i4.png",
+    "notebook": "results.ipynb",
+    "cell": 23,
+    "caption_hint": "Re-trained the IDQNon 4x4 because that is one of the most promising models in the paper",
+    "bytes": 34899
+  },
+  {
+    "file": "results_c28_i5.png",
+    "notebook": "results.ipynb",
+    "cell": 28,
+    "caption_hint": "Problem identified with prof: some cars wait for TOO LONG both in maxPressure and other RL models",
+    "bytes": 33161
+  },
+  {
+    "file": "results_c30_i6.png",
+    "notebook": "results.ipynb",
+    "cell": 30,
+    "caption_hint": "Problem identified with prof: some cars wait for TOO LONG both in maxPressure and other RL models",
+    "bytes": 31626
+  },
+  {
+    "file": "results_c33_i7.png",
+    "notebook": "results.ipynb",
+    "cell": 33,
+    "caption_hint": "assumptions failed with the above graphs, need to find better way to record the data",
+    "bytes": 35735
+  },
+  {
+    "file": "results_c37_i8.png",
+    "notebook": "results.ipynb",
+    "cell": 37,
+    "caption_hint": "Big Problem: I see car disadvatage but can't prove and this is why:",
+    "bytes": 60631
+  },
+  {
+    "file": "results_c38_i9.png",
+    "notebook": "results.ipynb",
+    "cell": 38,
+    "caption_hint": "",
+    "bytes": 338651
+  }
+]

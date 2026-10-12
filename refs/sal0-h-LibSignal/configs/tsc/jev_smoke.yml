@@ -1,0 +1,10 @@
+includes:
+  - configs/tsc/jev.yml
+
+# Six decision steps on the same grid4x4 demand; about 96 API requests.
+# Connectivity/integration check only, not a traffic-performance evaluation.
+trainer:
+  test_steps: 60
+
+world:
+  demand_heldout: []

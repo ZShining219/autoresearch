@@ -1,0 +1,5 @@
+includes:
+  - configs/tsc/colight.yml
+
+world:
+  crossing_proxy: true

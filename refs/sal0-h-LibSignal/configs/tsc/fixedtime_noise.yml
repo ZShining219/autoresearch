@@ -1,0 +1,8 @@
+includes:
+  - configs/tsc/fixedtime.yml
+
+# Partial-observability example: noisy detectors (see base.yml -> world.obs_count_noise_std).
+# Fixed-time ignores observations, so its ground-truth ATT is invariant to the noise.
+world:
+  obs_count_noise_std: 2.0
+  obs_noise_mode: additive

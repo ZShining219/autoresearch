@@ -1,0 +1,45 @@
+includes:
+  - configs/tsc/base.yml
+  - configs/tsc/od_hub_1800_base.yml
+
+# Separately labeled reasoning run. The only behavioral change from
+# configs/tsc/deepseek.yml is the 2048-token API generation budget.
+model:
+  name: deepseek_r1_8b_2048
+  backend: api
+
+  base_url: "https://genai.qatar.cmu.edu/v1"
+  model_id: "deepseek-r1-8b"
+  api_key_env: "OPENAI_API_KEY"
+  timeout: 180
+  extra_body:
+    use_rag: false
+
+  temperature: 0.0
+  max_new_tokens: 2048
+  do_sample: False
+  parse_retries: 5
+  parallelism: 16
+
+  v_stop: 0.1
+  n_segments: 3
+  obs_distance: 200
+
+trainer:
+  episodes: 1
+  steps: 1800
+  test_steps: 1800
+  buffer_size: 0
+  action_interval: 10
+  learning_rate: 0
+  learning_start: 0
+  update_model_rate: 0
+  update_target_rate: 0
+  test_when_train: False
+  heldout_eval_every: 0
+
+world:
+  demand_train_file: raw_data/grid4x4/od_hubs/demand_set/fixed_1800.rou.xml
+
+logger:
+  save_rate: 0

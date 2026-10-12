@@ -1,0 +1,41 @@
+includes:
+  - configs/tsc/base.yml
+  - configs/tsc/od_hub_1800_base.yml
+
+# Qwen3-4B, deterministic thinking variant with a 1024-token cap.
+model:
+  name: qwen3_4b_think1024
+  backend: local
+  model_path: "Qwen/Qwen3-4B"
+  model_subfolder: ""
+  device_map: "auto"
+  torch_dtype: "bfloat16"
+  chat_template_kwargs:
+    enable_thinking: True
+
+  temperature: 0.0
+  max_new_tokens: 1024
+  do_sample: False
+  parse_retries: 5
+  v_stop: 0.1
+  n_segments: 3
+  obs_distance: 200
+
+trainer:
+  episodes: 1
+  steps: 1800
+  test_steps: 1800
+  buffer_size: 0
+  action_interval: 10
+  learning_rate: 0
+  learning_start: 0
+  update_model_rate: 0
+  update_target_rate: 0
+  test_when_train: False
+  heldout_eval_every: 0
+
+world:
+  demand_train_file: raw_data/grid4x4/od_hubs/demand_set/fixed_1800.rou.xml
+
+logger:
+  save_rate: 0

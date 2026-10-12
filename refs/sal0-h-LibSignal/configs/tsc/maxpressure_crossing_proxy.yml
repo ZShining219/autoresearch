@@ -1,0 +1,5 @@
+includes:
+  - configs/tsc/maxpressure.yml
+
+world:
+  crossing_proxy: true

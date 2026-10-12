@@ -1,0 +1,5 @@
+includes:
+  - configs/tsc/fixedtime.yml
+
+world:
+  slow_start: true

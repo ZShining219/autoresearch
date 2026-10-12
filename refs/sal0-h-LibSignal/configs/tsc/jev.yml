@@ -1,0 +1,38 @@
+includes:
+  - configs/tsc/base.yml
+  - configs/tsc/od_hub_1800_base.yml
+
+# Match Traffic-R1's Level-1 sumo4x4 evaluation and observation settings.
+# Native OpenRouter Decisions API; credentials come from OPENROUTER_API_KEY
+# in the environment or the repository .env (environment takes precedence).
+model:
+  name: jev
+  model_id: typesafe/jev-1.13
+  train_model: false
+  test_model: true
+  timeout: 30
+  request_attempts: 3
+  parallelism: 16
+  log_decisions: true
+  v_stop: 0.1
+  n_segments: 3
+  obs_distance: 200
+
+trainer:
+  episodes: 1
+  steps: 1800
+  test_steps: 1800
+  buffer_size: 0
+  action_interval: 10
+  learning_rate: 0
+  learning_start: 0
+  update_model_rate: 0
+  update_target_rate: 0
+  test_when_train: false
+  heldout_eval_every: 0
+
+world:
+  demand_train_file: raw_data/grid4x4/od_hubs/demand_set/fixed_1800.rou.xml
+
+logger:
+  save_rate: 0

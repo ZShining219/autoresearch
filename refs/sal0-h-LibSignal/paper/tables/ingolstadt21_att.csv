@@ -1,0 +1,21 @@
+method,setting,network,att_s,note
+PressLight,homo_e200,sumo1x21,213.0,best TEST
+MaxPressure,homo_e200,sumo1x21,217.8406,BRF
+DQN,homo_e200,sumo1x21,224.4,best TEST
+FixedTime,homo_e200,sumo1x21,241.7473,BRF
+CoLight,homo_e200,sumo1x21,273.3,best TEST
+MaxPressure,axis_crossing,sumo1x21,227.7,
+PressLight,axis_crossing,sumo1x21,249.3,
+FixedTime,axis_crossing,sumo1x21,285.1,
+DQN,axis_crossing,sumo1x21,316.2,
+CoLight,axis_crossing,sumo1x21,401.9,
+DQN,odh_l1,sumo1x21,247.16,HELDOUT
+PressLight,odh_l1,sumo1x21,258.95,HELDOUT
+FixedTime,odh_l1,sumo1x21,280.89,HELDOUT
+MaxPressure,odh_l1,sumo1x21,294.6,HELDOUT
+CoLight,odh_l1,sumo1x21,316.32,HELDOUT
+PressLight,odh_l2,sumo1x21,277.05,HELDOUT
+DQN,odh_l2,sumo1x21,281.52,HELDOUT
+FixedTime,odh_l2,sumo1x21,288.96,HELDOUT
+MaxPressure,odh_l2,sumo1x21,301.2,HELDOUT
+CoLight,odh_l2,sumo1x21,340.28,HELDOUT

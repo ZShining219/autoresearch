@@ -1,0 +1,16 @@
+# Shared world flags for the all-axes realism capstone (sumo4x4, seed 42).
+# Physics: hetero fleet + slow-start discharge + crossing proxy capacity loss.
+# Sensors: connected-vehicle penetration + Gaussian count noise (same seed all agents).
+# See docs/REALISM_FULL.md.
+
+world:
+  hetero: true
+  slow_start: true
+  crossing_proxy: true
+  crossing_call_prob: 0.12
+  crossing_service_min: 7.0
+  crossing_service_max: 10.0
+  crossing_seed_offset: 7
+  obs_penetration: 0.8
+  obs_count_noise_std: 2.0
+  obs_noise_mode: additive

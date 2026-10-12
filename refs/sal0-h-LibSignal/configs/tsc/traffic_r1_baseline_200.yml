@@ -1,0 +1,40 @@
+# Traffic-R1 original baseline evaluation.
+# This intentionally uses only base.yml: default grid4x4 demand, homogeneous
+# vehicles, full observability, and no OD-hub/held-out or realism overlays.
+includes:
+  - configs/tsc/base.yml
+
+model:
+  name: traffic_r1
+  backend: local
+  train_model: False
+  test_model: True
+  load_model: False
+
+  model_path: "Season998/Traffic-R1"
+  model_subfolder: "huggingface"
+  device_map: "auto"
+  torch_dtype: "bfloat16"
+
+  temperature: 0.0
+  max_new_tokens: 512
+  do_sample: False
+  parse_retries: 5
+
+  # Traffic-R1 four-signal observation interface.
+  v_stop: 0.1
+  n_segments: 3
+  obs_distance: 200
+
+trainer:
+  # Keep the original baseline convention. Since train_model=False, test()
+  # performs one 3600-step greedy rollout; episodes is recorded as 200.
+  episodes: 200
+  steps: 3600
+  test_steps: 3600
+  action_interval: 10
+  test_when_train: False
+  heldout_eval_every: 0
+
+logger:
+  save_rate: 0
